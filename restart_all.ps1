@@ -1,10 +1,12 @@
 # Restart the panel and, unless paused, the background services.
 # ASCII only: PowerShell 5.1 reads .ps1 as ANSI and mangles non-ASCII comments.
-$root = "C:\Users\Blank\Documents\deepseek-harness\default-workspace\quest-monitor"
+$root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location -LiteralPath $root
 
+# Only touch processes that belong to THIS checkout: match the script name and
+# the project root, otherwise a second copy elsewhere on the machine gets killed.
 Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-    Where-Object { $_.CommandLine -like "*quest_window*" } |
+    Where-Object { $_.CommandLine -and $_.CommandLine -like "*quest_window*" -and $_.CommandLine -like "*$root*" } |
     ForEach-Object {
         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
         Write-Output "killed panel $($_.ProcessId)"

@@ -97,8 +97,17 @@ def _save_pids(pids):
         pass
 
 
+def _norm(text):
+    """统一路径写法，便于做命令行里的目录归属判断。"""
+    return (text or "").replace("/", "\\").lower()
+
+
 def _discover(name):
-    """按命令行找已经在跑、但不在 pid 记录里的同名脚本进程。"""
+    """按命令行找已经在跑、但不在 pid 记录里的同名脚本进程。
+
+    必须同时匹配脚本名和本项目的根目录：同一台机器上可能有第二份
+    quest-monitor（测试副本或另一个安装），只按脚本名匹配会误杀别人的进程。
+    """
     try:
         out = subprocess.run(
             ["powershell.exe", "-NoProfile", "-Command",
@@ -113,14 +122,16 @@ def _discover(name):
         data = json.loads(raw)
         if isinstance(data, dict):
             data = [data]
+        root_key = _norm(ROOT)
         hits = []
         for item in data:
-            cmd = str(item.get("CommandLine") or "")
-            if name in cmd:
-                try:
-                    hits.append(int(item.get("ProcessId")))
-                except (TypeError, ValueError):
-                    pass
+            cmd = _norm(item.get("CommandLine") or "")
+            if name not in cmd or root_key not in cmd:
+                continue
+            try:
+                hits.append(int(item.get("ProcessId")))
+            except (TypeError, ValueError):
+                pass
         return hits
     except Exception:
         return []
