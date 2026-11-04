@@ -1,0 +1,33 @@
+# 运行时数据（这些文件含个人工作内容，不进仓库）
+config/llm.json
+config/quest_state.json
+config/win_log.jsonl
+config/panel_alive
+config/paused
+config/workers.json
+config/*.lock
+config/*.tmp
+
+# 日志
+*.log
+engine/engine_run.log
+engine/engine_out.log
+engine/engine_err.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 编辑器 / 工具
+.vscode/
+.idea/
+.ruff_cache/
+.pytest_cache/
+
+# 系统
+Thumbs.db
+desktop.ini
+.DS_Store
+design_shots/

@@ -1,0 +1,32 @@
+{
+  "current_activity": "整理 Walmart 报价表 - Excel",
+  "suggestion": "报价写到第 3 项了，剩下 2 项预计 20 分钟，写完再切去查包材。",
+  "updated_at": "2026-01-01T10:30:00+08:00",
+  "main_quests": [
+    {
+      "id": "M1",
+      "title": "示例客户报价（3 个 SKU）",
+      "status": "active",
+      "progress": "2/3",
+      "note": "依据：Offer 表前台停留 42 分钟，期间打开过规格书。",
+      "steps": [
+        {"text": "确认客户需求与规格", "done": true},
+        {"text": "核算成本与价格", "done": true},
+        {"text": "出具并发送报价单", "done": false}
+      ]
+    }
+  ],
+  "side_quests": [
+    {
+      "id": "S1",
+      "title": "示例客户包材整理",
+      "status": "active",
+      "progress": "刚开始",
+      "note": "做报价时接到订单邮件，临时插入的支线。",
+      "steps": [
+        {"text": "核对包材规格", "done": false},
+        {"text": "更新包材清单表", "done": false}
+      ]
+    }
+  ]
+}
