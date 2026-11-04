@@ -1,4 +1,4 @@
-# 任务追踪 HUD（Quest Monitor）
+# SideQuest
 
 一个常驻桌面的"游戏任务面板"：后台记录你在用什么窗口，本地大模型据此判断你正在做什么任务，把主线/支线任务挂在屏幕右上角的悬浮窗里。
 
@@ -14,8 +14,8 @@
 需要 Windows 10/11、Python 3.10+（安装时勾上 `tcl/tk and IDLE`）。纯标准库，不用 pip 装任何东西。
 
 ```powershell
-git clone https://github.com/hcycyxx/quest-monitor D:\tools\quest-monitor
-cd D:\tools\quest-monitor
+git clone https://github.com/hcycyxx/sidequest D:\tools\sidequest
+cd D:\tools\sidequest
 .\install.ps1 -BaseUrl http://127.0.0.1:8899/v1 -ApiKey sk-xxx -Model deepseek-v4.1-flash
 ```
 
@@ -35,7 +35,7 @@ python engine\ctl.py resume
 让 DSH 自己管理安装和排障，把它放进共享技能目录：
 
 ```powershell
-git clone https://github.com/hcycyxx/quest-monitor "$env:USERPROFILE\.agents\skills\quest-monitor"
+git clone https://github.com/hcycyxx/sidequest "$env:USERPROFILE\.agents\skills\sidequest"
 ```
 
 之后在 DSH 里说"装一下任务面板"或"面板不刷新了"，它会读 `SKILL.md` 按里面的步骤处理。
@@ -43,7 +43,7 @@ git clone https://github.com/hcycyxx/quest-monitor "$env:USERPROFILE\.agents\ski
 ## 结构
 
 ```
-quest-monitor/
+sidequest/
 ├── SKILL.md             # DSH 技能入口（装成技能时才用）
 ├── install.ps1          # 一键安装：查环境、写配置、拉起服务
 ├── restart_all.ps1      # 面板卡住时整条重启，尊重暂停标记

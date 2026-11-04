@@ -59,10 +59,10 @@ F_MICRO = F_SMALL
 W = 336
 TZ = timezone(timedelta(hours=8))
 SKINS = {
-    "glass": {"name":"深蓝玻璃", "bg":"#14171f", "hi":"#232a38", "text":"#f1f5fc", "muted":"#a8b7cc", "gold":"#ffd166", "cyan":"#7de3f4", "green":"#5be3a2", "alpha":1., "radius":16, "family":"Microsoft YaHei UI", "brand":"任务追踪"},
-    "transparent": {"name":"轻透悬浮", "bg":"#182330", "hi":"#2b3c4e", "text":"#ffffff", "muted":"#cfdaea", "gold":"#ffe1a0", "cyan":"#b3efff", "green":"#92efc3", "alpha":.90, "radius":16, "family":"Microsoft YaHei UI", "brand":"轻透任务"},
-    "journal": {"name":"杂志手账", "bg":"#f4efe3", "hi":"#eae1ce", "text":"#342e29", "muted":"#6b6054", "gold":"#96623b", "cyan":"#396c73", "green":"#3c7052", "alpha":1., "radius":7, "family":"SimSun", "brand":"工作手记"},
-    "night": {"name":"夜航 HUD", "bg":"#101b25", "hi":"#1c2e3c", "text":"#edf8ff", "muted":"#abc4d6", "gold":"#8ae8ff", "cyan":"#c0b3ff", "green":"#68edb8", "alpha":1., "radius":6, "family":"Microsoft YaHei UI", "brand":"任务导航"},
+    "glass": {"name":"深蓝玻璃", "bg":"#14171f", "hi":"#232a38", "text":"#f1f5fc", "muted":"#a8b7cc", "gold":"#ffd166", "cyan":"#7de3f4", "green":"#5be3a2", "alpha":1., "radius":16, "family":"Microsoft YaHei UI", "brand":"SideQuest"},
+    "transparent": {"name":"轻透悬浮", "bg":"#182330", "hi":"#2b3c4e", "text":"#ffffff", "muted":"#cfdaea", "gold":"#ffe1a0", "cyan":"#b3efff", "green":"#92efc3", "alpha":.90, "radius":16, "family":"Microsoft YaHei UI", "brand":"SideQuest"},
+    "journal": {"name":"杂志手账", "bg":"#f4efe3", "hi":"#eae1ce", "text":"#342e29", "muted":"#6b6054", "gold":"#96623b", "cyan":"#396c73", "green":"#3c7052", "alpha":1., "radius":7, "family":"SimSun", "brand":"SideQuest"},
+    "night": {"name":"夜航 HUD", "bg":"#101b25", "hi":"#1c2e3c", "text":"#edf8ff", "muted":"#abc4d6", "gold":"#8ae8ff", "cyan":"#c0b3ff", "green":"#68edb8", "alpha":1., "radius":6, "family":"Microsoft YaHei UI", "brand":"SideQuest"},
 }
 
 
@@ -142,7 +142,7 @@ class QuestHUD(tk.Tk):
         super().__init__()
         self._ui_scale = max(1., self.winfo_fpixels("1i") / 96.)
         self.EDGE = round(12*self._ui_scale)
-        self.title("任务追踪 · Codex V6")
+        self.title("SideQuest")
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.configure(bg=TRANSPARENT)

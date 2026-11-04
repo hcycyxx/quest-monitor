@@ -61,12 +61,13 @@ def active_window():
     return {"title": buf.value, "exe": name, "pid": pid.value}
 
 
-SELF_PREFIXES = ("任务追踪",)
+SELF_PREFIXES = ("SideQuest", "任务追踪")
 
 
 def is_self(w):
     """面板自己也是 python.exe 的 Tk 窗口，点它一下就会被记成"当前活动"，
-    导致 AI 把面板标题（"任务追踪 · Codex V6"）当成用户在做的事。这类记录直接跳过。"""
+    导致 AI 把面板标题（"SideQuest"）当成用户在做的事。这类记录直接跳过。
+    旧标题也留着，避免改名前的历史窗口漏进来。"""
     if (w.get("exe") or "").lower() not in ("python.exe", "pythonw.exe"):
         return False
     t = w.get("title") or ""

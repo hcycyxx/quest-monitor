@@ -1,4 +1,4 @@
-# Quest Monitor installer. ASCII only: PowerShell 5.1 reads .ps1 as ANSI.
+# SideQuest installer. ASCII only: PowerShell 5.1 reads .ps1 as ANSI.
 param(
     [string]$BaseUrl = "",
     [string]$ApiKey = "",
@@ -11,7 +11,7 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
 
 Write-Host ""
-Write-Host "Quest Monitor installer" -ForegroundColor Cyan
+Write-Host "SideQuest installer" -ForegroundColor Cyan
 Write-Host "root: $root"
 Write-Host ""
 

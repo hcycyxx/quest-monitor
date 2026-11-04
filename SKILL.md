@@ -1,10 +1,10 @@
 ---
-name: quest-monitor
+name: sidequest
 description: 在 Windows 桌面上装一个常驻的游戏式任务面板：后台采样前台窗口，本地 OpenAI 兼容模型每 60 秒推断你正在做的任务，把主线/支线和下一步建议挂到屏幕右上角。用户说"装任务面板/任务追踪/我老是做着做着就乱了/想要游戏任务列表挂在屏幕边上"时使用。
 whenToUse: 用户想在自己的 Windows 机器上运行或重装这个任务面板，或者要求排查面板不显示、不刷新、暂停没生效这类运行问题。
 ---
 
-# 任务追踪 HUD
+# SideQuest
 
 这是一个可直接运行的 Windows 桌面程序，不是纯文档技能。装完之后 `ui/quest_window.py`
 会把一个悬浮窗挂在屏幕右上角，`engine/` 下两个后台进程负责采样与推断。
@@ -25,16 +25,16 @@ whenToUse: 用户想在自己的 Windows 机器上运行或重装这个任务面
 
 ```powershell
 # 方式一：作为 DSH 技能装（之后可直接说"启动任务面板"）
-git clone https://github.com/hcycyxx/quest-monitor "$env:USERPROFILE\.agents\skills\quest-monitor"
+git clone https://github.com/hcycyxx/sidequest "$env:USERPROFILE\.agents\skills\sidequest"
 
 # 方式二：随便放一个目录当普通程序用
-git clone https://github.com/hcycyxx/quest-monitor D:\tools\quest-monitor
+git clone https://github.com/hcycyxx/sidequest D:\tools\sidequest
 ```
 
 然后跑安装器，把模型地址传进去：
 
 ```powershell
-cd "$env:USERPROFILE\.agents\skills\quest-monitor"
+cd "$env:USERPROFILE\.agents\skills\sidequest"
 .\install.ps1 -BaseUrl http://127.0.0.1:8899/v1 -ApiKey sk-xxx -Model deepseek-v4.1-flash
 ```
 
