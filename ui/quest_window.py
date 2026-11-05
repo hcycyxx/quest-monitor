@@ -18,6 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 STATE_FILE = os.path.join(ROOT, "config", "quest_state.json")
 ALIVE_FILE = os.path.join(ROOT, "config", "panel_alive")
+UI_FILE = os.path.join(ROOT, "config", "ui.json")
 
 sys.path.insert(0, os.path.join(ROOT, "engine"))
 try:
@@ -40,6 +41,31 @@ def save_state(s):
     store.save_state(STATE_FILE, s)
 
 
+def load_ui():
+    """面板自己的偏好（皮肤、透明度）。和任务状态分开存，互不影响。"""
+    try:
+        with open(UI_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_ui(**patch):
+    """合并写入。写失败就静默放弃：偏好丢了不算故障，不能让面板崩。"""
+    data = load_ui()
+    data.update(patch)
+    try:
+        os.makedirs(os.path.dirname(UI_FILE), exist_ok=True)
+        tmp = UI_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, UI_FILE)
+    except OSError:
+        pass
+    return data
+
+
 GLASS_BG = "#14171f"
 GLASS_HI = "#232a38"
 STROKE = "#38465c"
@@ -52,6 +78,25 @@ CYAN = "#7de3f4"
 GREEN = "#5be3a2"
 RED = "#ff8080"
 TRANSPARENT = "#010203"
+# 透明度下限 0.35：再低就既看不清也点不到，等于把面板弄丢在桌面上。
+ALPHA_MIN = 0.35
+ALPHA_MAX = 1.0
+
+# 文字层：Windows 的 -alpha 作用在整个窗口上，文字会跟着一起变淡。
+# tkinter 没有"只让背景透明"的开关，所以另开一个同尺寸的覆盖窗口，只把文字、
+# 线条和图标复制上去，alpha 固定 1.0，背景色用 -transparentcolor 抠掉，
+# 并设成点击穿透——所有交互仍然落在主窗口上。
+TEXT_OVERLAY = True
+# 逻辑像素面积超过这个值的多边形当背景块，不复制到文字层（否则玻璃被盖死）
+OV_SKIP_AREA = 5200
+OV_OPTS = {
+    "text": ("text", "fill", "font", "anchor", "justify", "angle"),
+    "line": ("fill", "width", "dash", "capstyle", "joinstyle", "arrow", "smooth", "stipple"),
+    "polygon": ("fill", "outline", "width", "dash", "smooth", "splinesteps", "joinstyle", "stipple"),
+    "rectangle": ("fill", "outline", "width", "dash", "stipple"),
+    "oval": ("fill", "outline", "width", "dash", "stipple"),
+    "arc": ("fill", "outline", "width", "dash", "style", "start", "extent"),
+}
 F_TITLE = ("Microsoft YaHei UI", 10, "bold")
 F_BODY = ("Microsoft YaHei UI", 10)
 F_SMALL = ("Microsoft YaHei UI", 8)
@@ -180,8 +225,30 @@ class QuestHUD(tk.Tk):
         self._paused = bool(svc and svc.is_paused())
         self._power_busy = False
         self._power_serial = 0
-        self._skin_key = "glass"
-        self._skin_choice = tk.StringVar(self, value="glass")
+        # 皮肤与透明度存在 config/ui.json，重启后接着用上次的
+        saved = load_ui()
+        self._skin_key = saved.get("skin") if saved.get("skin") in SKINS else "glass"
+        self._skin_choice = tk.StringVar(self, value=self._skin_key)
+        # 用户拖过滑块就记下来，之后换皮肤不再覆盖他的选择
+        self._alpha_custom = "alpha" in saved
+        self._alpha = self._clamp_alpha(saved.get("alpha", SKINS[self._skin_key]["alpha"]))
+        self._settings = None
+        self._settings_body = None
+        self._settings_open = False
+        self._pct_label = None
+        self._slider = None
+        try:
+            self.attributes("-alpha", self._alpha)
+        except tk.TclError:
+            pass
+        # 文字层：主窗口半透明时，文字另画在一个 alpha=1.0 的穿透窗口上
+        self._ov = None
+        self._ov_cv = None
+        self._ov_visible = False
+        self._ov_rect = None
+        self._ov_stamp = 0.
+        self._make_overlay()
+        self.bind("<Configure>", self._place_overlay, add="+")
         self._fonts = {"title": tkfont.Font(self, font=F_TITLE),
                        "body": tkfont.Font(self, font=F_BODY),
                        "small": tkfont.Font(self, font=F_SMALL)}
@@ -202,6 +269,8 @@ class QuestHUD(tk.Tk):
 
     def _drag_start(self, e):
         self._cancel_edge()
+        # 拖窗口时设置面板会留在原地，先收掉
+        self._close_settings()
         self._drag = (e.x_root - self.winfo_x(), e.y_root - self.winfo_y())
         self._dock_side = None
         self._edge_pinned = False
@@ -212,6 +281,9 @@ class QuestHUD(tk.Tk):
             y = max(0, e.y_root - self._drag[1])
             x = max(0, min(self.winfo_screenwidth() - round(W*self._ui_scale), x))
             self.geometry(f"+{x}+{y}")
+            # 拖窗口时不动画也不重绘，文字层得自己跟上，否则字会留在原地
+            self._ov_rect = None
+            self._place_overlay()
 
     def _drag_end(self, e):
         if self._drag:
@@ -236,10 +308,17 @@ class QuestHUD(tk.Tk):
     def _close(self, e=None):
         if self._guard_reveal(e):
             return
+        self._close_settings()
         for job in (self._motion_job, self._edge_job, self._effect_job):
             if job:
                 self.after_cancel(job)
         self._hide_tip()
+        if self._ov is not None:
+            try:
+                self._ov.destroy()
+            except tk.TclError:
+                pass
+            self._ov, self._ov_cv = None, None
         try:
             os.remove(ALIVE_FILE)
         except OSError:
@@ -294,6 +373,8 @@ class QuestHUD(tk.Tk):
     def _show_tip(self, text, e):
         if self._tip:
             self._tip.destroy()
+        # 气泡自带不透明底色，压在文字层上会被遮一半
+        self._hide_overlay()
         self._tip = tk.Toplevel(self)
         self._tip.overrideredirect(True)
         self._tip.attributes("-topmost", True)
@@ -335,9 +416,16 @@ class QuestHUD(tk.Tk):
         self.after(3000, self.tick)
 
     def _hide_tip(self, e=None):
-        if self._tip:
-            self._tip.destroy()
-            self._tip = None
+        if not self._tip:
+            return
+        self._tip.destroy()
+        self._tip = None
+        # 气泡收起后把文字层放回来（设置面板还开着就不放）。
+        # 这里清掉节流时间戳而不是 force：render 每帧都会调 _hide_tip，
+        # force 会让同一帧重画两次文字层。
+        self._ov_stamp = 0.
+        if not self._settings_open:
+            self._sync_overlay()
 
     def _cancel_edge(self):
         if self._edge_job:
@@ -394,6 +482,9 @@ class QuestHUD(tk.Tk):
 
     def _escape(self, e=None):
         self._hide_tip()
+        if self._settings_open:
+            self._close_settings()
+            return
         if self._expanded:
             self._expanded = False
             self.render()
@@ -611,7 +702,7 @@ class QuestHUD(tk.Tk):
                 cv.create_line(x,23,x,27,fill=color,width=1.4,tags=name)
         # 这排图标没有文字，鼠标停上去得说清楚是干什么的
         hints = {
-            "skin": "换皮肤",
+            "skin": "皮肤与透明度",
             "power": "继续（重启采样与 AI 分析）" if self._paused else "暂停（停止采样，不再消耗 token）",
             "pin": ("固定：贴边后不自动缩成把手" if not self._edge_pinned else "取消贴边固定")
                    if self._dock_side else "把面板拖到屏幕边缘后，这里可以固定成常驻展开",
@@ -863,17 +954,225 @@ class QuestHUD(tk.Tk):
         if self._guard_reveal(e):
             return
         self._hide_tip()
-        menu = tk.Menu(self,tearoff=False,bg=GLASS_HI,fg=WHITE,
-                       activebackground=mix(GLASS_HI,SUB,.2),activeforeground=WHITE,
-                       selectcolor=GOLD,font=self._fonts["small"],borderwidth=0)
-        for key,skin in SKINS.items():
-            menu.add_radiobutton(label=skin["name"],variable=self._skin_choice,
-                                 value=key,command=lambda k=key:self._set_skin(k))
-        menu.bind("<Unmap>",lambda e: self.after_idle(menu.destroy))
+        if self._settings_open:
+            self._close_settings()
+            return
+        self._open_settings()
+
+    # ── 皮肤与透明度设置面板 ────────────────────────────────────────────
+    # 原来是一个 tk.Menu 单选列表。加了透明度拖动条之后菜单放不下，
+    # 改成自绘的弹出面板：上半皮肤列表，下半滑块。
+
+    def _clamp_alpha(self, v):
+        """0.35 是下限。再低就基本看不见也点不到了，等于把面板弄丢。"""
         try:
-            menu.tk_popup(min(e.x_root,self.winfo_screenwidth()-180),e.y_root+8)
-        finally:
-            menu.grab_release()
+            v = float(v)
+        except (TypeError, ValueError):
+            return 1.0
+        return max(ALPHA_MIN, min(ALPHA_MAX, v))
+
+    def _apply_alpha(self, v, save=False):
+        self._alpha = self._clamp_alpha(v)
+        self._alpha_custom = True
+        try:
+            self.attributes("-alpha", self._alpha)
+        except tk.TclError:
+            pass
+        # 背景透明度变了，文字层要跟着出现/消失或重画
+        self._sync_overlay(force=True)
+        if self._pct_label is not None:
+            try:
+                self._pct_label.configure(text=f"{int(round(self._alpha*100))}%")
+            except tk.TclError:
+                self._pct_label = None
+        if save:
+            save_ui(alpha=self._alpha)
+
+    def _close_settings(self):
+        self._settings_open = False
+        self._pct_label = None
+        self._slider = None
+        if self._settings is not None:
+            try:
+                self._settings.destroy()
+            except tk.TclError:
+                pass
+            self._settings = None
+        self._sync_overlay(force=True)
+
+    def _hide_overlay(self):
+        """临时收起文字层（设置面板、气泡这类自带不透明背景的窗口要用）。"""
+        if self._ov is not None and self._ov_visible:
+            try:
+                self._ov.withdraw()
+            except tk.TclError:
+                self._ov = None
+            self._ov_visible = False
+            self._ov_rect = None
+
+    def _open_settings(self):
+        self._settings_open = True
+        # 设置面板是独立窗口、自己就不透明；文字层盖上去会把它弄花
+        self._hide_overlay()
+        top = tk.Toplevel(self)
+        top.overrideredirect(True)
+        top.attributes("-topmost", True)
+        self._settings = top
+        self._settings_body = tk.Frame(top, bg=GLASS_HI, highlightthickness=1,
+                                       highlightbackground=STROKE)
+        self._settings_body.pack(fill="both", expand=True)
+        self._fill_settings()
+        top.bind("<Escape>", lambda ev: self._close_settings())
+        top.bind("<FocusOut>", lambda ev: self.after(120, self._maybe_close_settings))
+        try:
+            top.focus_force()
+        except tk.TclError:
+            pass
+        self._place_settings()
+
+    def _maybe_close_settings(self):
+        """点面板外面就收起来。焦点回到本进程任何控件都算还在用。"""
+        if not self._settings_open or self._settings is None:
+            return
+        try:
+            focus = self._settings.focus_get()
+        except (tk.TclError, KeyError):
+            focus = None
+        if focus is None:
+            self._close_settings()
+
+    def _place_settings(self):
+        top = self._settings
+        if top is None:
+            return
+        top.update_idletasks()
+        w, h = top.winfo_reqwidth(), top.winfo_reqheight()
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        px, py = self.winfo_rootx(), self.winfo_rooty()
+        pw = self.winfo_width()
+        y = py + round(38*self._ui_scale)
+        # 面板通常贴在屏幕右侧，所以优先把设置面板放到左边，别盖住任务列表；
+        # 左边放不下就翻到右边，再不行才叠在面板上。
+        x = px - w - round(8*self._ui_scale)
+        if x < 4:
+            x = px + pw + round(8*self._ui_scale)
+        if x + w > sw - 4:
+            x = px + round((W-8)*self._ui_scale) - w
+        x = max(4, min(x, sw-w-4))
+        y = max(4, min(y, sh-h-4))
+        top.geometry(f"+{x}+{y}")
+
+    def _fill_settings(self):
+        """重建面板内容。换皮肤后颜色变了，直接重画一遍最省事。"""
+        body = self._settings_body
+        for child in body.winfo_children():
+            child.destroy()
+        self._pct_label = None
+        self._slider = None
+        pad = round(10*self._ui_scale)
+
+        tk.Label(body, text="皮肤", font=F_SMALL, fg=SUB, bg=GLASS_HI,
+                 anchor="w").pack(fill="x", padx=pad, pady=(round(8*self._ui_scale), 0))
+
+        for key, skin in SKINS.items():
+            current = key == self._skin_key
+            row = tk.Frame(body, bg=GLASS_HI, cursor="hand2")
+            row.pack(fill="x", padx=round(6*self._ui_scale), pady=round(1*self._ui_scale))
+            chip = tk.Canvas(row, width=round(14*self._ui_scale), height=round(14*self._ui_scale),
+                             bg=GLASS_HI, highlightthickness=0)
+            chip.create_oval(round(2*self._ui_scale), round(2*self._ui_scale),
+                             round(12*self._ui_scale), round(12*self._ui_scale),
+                             fill=skin["gold"], outline="")
+            chip.pack(side="left", padx=(round(6*self._ui_scale), round(8*self._ui_scale)),
+                      pady=round(5*self._ui_scale))
+            label = tk.Label(row, text=skin["name"], font=F_SMALL, bg=GLASS_HI,
+                             fg=WHITE if current else SUB, anchor="w")
+            label.pack(side="left", fill="x", expand=True)
+            tick = tk.Label(row, text="●" if current else "", font=F_SMALL,
+                            bg=GLASS_HI, fg=GOLD)
+            tick.pack(side="right", padx=(0, round(8*self._ui_scale)))
+
+            def enter(ev, r=row, lbl=label):
+                r.configure(bg=mix(GLASS_HI, SUB, .14))
+                lbl.configure(bg=mix(GLASS_HI, SUB, .14))
+            def leave(ev, r=row, lbl=label):
+                r.configure(bg=GLASS_HI)
+                lbl.configure(bg=GLASS_HI)
+            for widget in (row, chip, label, tick):
+                widget.bind("<Enter>", enter)
+                widget.bind("<Leave>", leave)
+                widget.bind("<Button-1>", lambda ev, k=key: self._set_skin(k))
+
+        tk.Frame(body, bg=mix(GLASS_HI, SUB, .22), height=1).pack(
+            fill="x", padx=pad, pady=(round(7*self._ui_scale), round(5*self._ui_scale)))
+
+        head = tk.Frame(body, bg=GLASS_HI)
+        head.pack(fill="x", padx=pad)
+        tk.Label(head, text="透明度", font=F_SMALL, fg=SUB, bg=GLASS_HI,
+                 anchor="w").pack(side="left")
+        self._pct_label = tk.Label(head, text=f"{int(round(self._alpha*100))}%",
+                                   font=F_SMALL, fg=GOLD, bg=GLASS_HI, anchor="e")
+        self._pct_label.pack(side="right")
+
+        sw = round(196*self._ui_scale)
+        sh = round(22*self._ui_scale)
+        scv = tk.Canvas(body, width=sw, height=sh, bg=GLASS_HI, highlightthickness=0,
+                        cursor="hand2")
+        scv.pack(padx=pad, pady=(round(2*self._ui_scale), round(10*self._ui_scale)))
+        self._slider = scv
+
+        state = {"dragging": False}
+
+        def geom():
+            # winfo_width() 在 canvas 还没被映射时返回 1（不是 0），
+            # 拿它当宽度会让 span 变成 1px，点哪儿都算拖到最右端。
+            w = scv.winfo_width()
+            if w <= 1:
+                w = sw
+            edge = round(7*self._ui_scale)
+            return w, edge, max(1, w - edge*2)
+
+        def draw():
+            scv.delete("all")
+            w, edge, span = geom()
+            cy = sh/2
+            x0, x1 = edge, w - edge
+            frac = (self._alpha - ALPHA_MIN) / (ALPHA_MAX - ALPHA_MIN)
+            kx = x0 + span*frac
+            thick = round(3*self._ui_scale)
+            scv.create_line(x0, cy, x1, cy, fill=mix(GLASS_HI, SUB, .32),
+                            width=thick, capstyle="round")
+            scv.create_line(x0, cy, kx, cy, fill=GOLD, width=thick, capstyle="round")
+            r = round(6*self._ui_scale)
+            scv.create_oval(kx-r, cy-r, kx+r, cy+r, fill=GOLD,
+                            outline=GLASS_HI, width=round(1.5*self._ui_scale))
+
+        def pick(ev):
+            w, edge, span = geom()
+            frac = max(0., min(1., (ev.x - edge)/span))
+            self._apply_alpha(ALPHA_MIN + (ALPHA_MAX - ALPHA_MIN)*frac)
+            draw()
+
+        def press(ev):
+            state["dragging"] = True
+            pick(ev)
+        def move(ev):
+            if state["dragging"]:
+                pick(ev)
+        def release(ev):
+            if state["dragging"]:
+                state["dragging"] = False
+                pick(ev)
+                save_ui(alpha=self._alpha)   # 拖完才落盘，别每一像素都写文件
+
+        scv.bind("<Configure>", lambda ev: draw())
+        scv.bind("<Button-1>", press)
+        scv.bind("<B1-Motion>", move)
+        scv.bind("<ButtonRelease-1>", release)
+        scv.bind("<MouseWheel>", lambda ev: (
+            self._apply_alpha(self._alpha + (0.05 if ev.delta > 0 else -0.05), save=True),
+            draw()))
+        draw()
 
     def _set_skin(self,key):
         global GLASS_BG,GLASS_HI,STROKE,WHITE,SUB,FAINT,GOLD,GOLD_DIM,CYAN,GREEN,F_SMALL
@@ -889,10 +1188,18 @@ class QuestHUD(tk.Tk):
             font.configure(family=skin["family"])
         self._line = max(21,self._fonts["body"].metrics("linespace")/self._ui_scale+3)
         self._small_line = max(17,self._fonts["small"].metrics("linespace")/self._ui_scale+2)
+        # 用户手动调过透明度就以他为准，换皮肤不再把它顶掉；
+        # 没调过才跟着皮肤走各自的默认值。
+        if not self._alpha_custom:
+            self._alpha = self._clamp_alpha(skin["alpha"])
         try:
-            self.attributes("-alpha",skin["alpha"])
+            self.attributes("-alpha",self._alpha)
         except tk.TclError:
             pass
+        save_ui(skin=key)
+        if self._settings_open:
+            self._fill_settings()
+            self._place_settings()
         self.render()
 
     def render(self):
@@ -1000,6 +1307,7 @@ class QuestHUD(tk.Tk):
                 self._motion_job = self.after(16,animate)
             else:
                 self._motion_job = None
+            self._sync_overlay()
         animate()
         self._start_effect(serial)
 
@@ -1041,6 +1349,7 @@ class QuestHUD(tk.Tk):
                 self._motion_job = self.after(16,frame)
             else:
                 self._motion_job = None
+            self._sync_overlay()
         frame()
 
     def _step_click(self,key,qid,idx,e,cy=None):
@@ -1117,11 +1426,210 @@ class QuestHUD(tk.Tk):
                 self.body.delete("celebration")
                 self.list.delete("celebration")
                 self._effect_job = None
+            self._sync_overlay()
         frame()
 
     def _fit(self,min_h=76):
         # Compatibility hook for external callers; rendering owns animated sizing.
         self.update_idletasks()
+
+    # ── 文字层（主窗口半透明，文字保持不透明）──────────────────────────────
+    # 思路：另开一个同尺寸、点击穿透的覆盖窗口，alpha 固定 1.0，
+    # 只把文字/线条/图标复制上去，背景色抠成透明。这样调低主窗口 alpha
+    # 只有玻璃变透，字还是实的。
+
+    def _make_overlay(self):
+        if not TEXT_OVERLAY:
+            return
+        try:
+            ov = tk.Toplevel(self)
+        except tk.TclError:
+            return
+        ov.withdraw()
+        ov.overrideredirect(True)
+        ov.attributes("-topmost", True)
+        ov.configure(bg=TRANSPARENT)
+        try:
+            ov.attributes("-transparentcolor", TRANSPARENT)
+        except tk.TclError:
+            ov.configure(bg=GLASS_BG)
+        try:
+            ov.attributes("-alpha", 1.0)
+        except tk.TclError:
+            pass
+        cv = tk.Canvas(ov, bg=TRANSPARENT, highlightthickness=0, bd=0)
+        cv.pack(fill="both", expand=True)
+        self._ov, self._ov_cv = ov, cv
+        self._set_click_through(ov)
+
+    @staticmethod
+    def _set_click_through(win):
+        """WS_EX_LAYERED|WS_EX_TRANSPARENT|WS_EX_NOACTIVATE：看得见，点得到下面的窗口。"""
+        if os.name != "nt":
+            return
+        import ctypes
+        GWL_EXSTYLE = -20
+        WS_EX_LAYERED, WS_EX_TRANSPARENT, WS_EX_NOACTIVATE = 0x80000, 0x20, 0x8000000
+        u = ctypes.windll.user32
+        hwnd = u.GetParent(win.winfo_id()) or win.winfo_id()
+        try:
+            style = u.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            u.SetWindowLongW(hwnd, GWL_EXSTYLE,
+                             style | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
+        except (AttributeError, OSError):
+            pass
+
+    def _place_overlay(self, e=None):
+        ov = self._ov
+        if ov is None:
+            return
+        # alpha 拉满时不需要文字层；跟着主窗口移动也没意义，直接收起来，
+        # 免得桌面上多一个看不见却吃点击的窗口。
+        if self._alpha >= .999:
+            if self._ov_visible:
+                try:
+                    ov.withdraw()
+                except tk.TclError:
+                    self._ov = None
+                self._ov_visible = False
+            return
+        x, y = self.winfo_rootx(), self.winfo_rooty()
+        w, h = self.winfo_width(), self.winfo_height()
+        if self._ov_rect == (x, y, w, h):
+            return
+        self._ov_rect = (x, y, w, h)
+        try:
+            ov.geometry(f"{max(1,w)}x{max(1,h)}+{x}+{y}")
+            ov.deiconify()
+            ov.lift()
+            self._ov_visible = True
+        except tk.TclError:
+            self._ov = None
+
+    def _near_bg(self, color):
+        """这个填充色是不是就是面板底色。是的话在文字层里当背景丢掉。"""
+        try:
+            c = self.winfo_rgb(color)
+        except tk.TclError:
+            return False
+        c = (c[0] // 256, c[1] // 256, c[2] // 256)
+        for base in (GLASS_BG, GLASS_HI):
+            try:
+                b = self.winfo_rgb(base)
+            except tk.TclError:
+                continue
+            b = (b[0] // 256, b[1] // 256, b[2] // 256)
+            d = sum((c[i] - b[i]) ** 2 for i in range(3)) ** .5
+            if d < 30:
+                return True
+        return False
+
+    def _copy_items(self, src, dst, dx, dy, clip=None):
+        """把 src 画布上的线条/图标/文字抄到文字层。
+
+        src 是 DesignCanvas，coords() 返回逻辑单位，得乘回 factor 才能对上
+        覆盖窗口的物理像素。dx/dy 也是物理像素。
+        """
+        factor = getattr(src, "factor", self._ui_scale)
+        for item in src.find_all():
+            try:
+                kind = src.type(item)
+            except tk.TclError:
+                continue
+            allowed = OV_OPTS.get(kind)
+            if not allowed:
+                continue
+            try:
+                if src.itemcget(item, "state") == "hidden":
+                    continue
+            except tk.TclError:
+                pass
+            coords = src.coords(item)
+            if not coords:
+                continue
+            box = None
+            try:
+                box = src.bbox(item)
+            except tk.TclError:
+                box = None
+            if clip and box:
+                if box[3] < clip[0] or box[1] > clip[1]:
+                    continue
+            conf = {}
+            for opt in allowed:
+                try:
+                    value = src.itemcget(item, opt)
+                except tk.TclError:
+                    continue
+                if value != "":
+                    conf[opt] = value
+            if kind != "text":
+                fill = conf.get("fill")
+                if fill and self._near_bg(fill):
+                    conf.pop("fill")
+                if not conf.get("fill") and not conf.get("outline"):
+                    continue
+                if conf.get("fill") and box and \
+                        (box[2] - box[0]) * (box[3] - box[1]) > OV_SKIP_AREA * factor * factor:
+                    continue
+            pts = [coords[i] * factor + (dx if i % 2 == 0 else dy)
+                   for i in range(len(coords))]
+            try:
+                if kind == "text":
+                    dst.create_text(pts[0], pts[1], **conf)
+                elif kind == "line":
+                    dst.create_line(*pts, **conf)
+                elif kind == "polygon":
+                    dst.create_polygon(*pts, **conf)
+                elif kind == "rectangle":
+                    dst.create_rectangle(*pts, **conf)
+                elif kind == "oval":
+                    dst.create_oval(*pts, **conf)
+                elif kind == "arc":
+                    dst.create_arc(*pts, **conf)
+            except tk.TclError:
+                pass
+
+    def _sync_overlay(self, force=False):
+        """把当前画面里该实的部分抄到文字层。alpha 拉满时整个隐藏。
+
+        主窗口里的字不隐藏：它已经画在那儿了，藏起来会让文字上的点击热区失效
+        （canvas 的 hidden item 收不到事件）。同一位置、同一颜色再盖一层不透明
+        的字，视觉上就是"背景透了、字还是实的"，没有副作用。
+        """
+        if self._ov is None or self._ov_cv is None:
+            return
+        now = time.monotonic()
+        if not force and now - self._ov_stamp < .045:
+            return
+        self._ov_stamp = now
+        try:
+            if self._alpha >= .999:
+                if self._ov_visible:
+                    self._ov_cv.delete("all")
+                    self._ov.withdraw()
+                    self._ov_visible = False
+                return
+            self._place_overlay()
+            if self._ov is None:
+                return
+            cv = self._ov_cv
+            cv.delete("all")
+            self._copy_items(self.body, cv, 0, 0)
+            if self._list_window is not None:
+                scale = self._ui_scale
+                # coords() 给的是逻辑单位，_copy_items 内部会再乘 factor，
+                # 所以这里的偏移必须换成物理像素。
+                lx, ly = self.body.coords(self._list_window)
+                top = self.list.canvasy(0) * scale
+                clip = (0, max(0, getattr(self, "_viewport_h", 0)) * scale)
+                self._copy_items(self.list, cv, lx * scale, ly * scale - top, clip)
+            if not self._ov_visible:
+                self._ov.deiconify()
+                self._ov.lift()
+                self._ov_visible = True
+        except tk.TclError:
+            self._ov, self._ov_cv, self._ov_visible = None, None, False
 
     def _card_click(self,e):
         if e.x < W-95:
