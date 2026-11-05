@@ -200,6 +200,8 @@ class QuestHUD(tk.Tk):
         self._drag = None
         self._expanded = False
         self._minimized = False
+        # 头部「当前行动」默认两行；点箭头展开完整描述（长句会被截断成「中途…」）
+        self._act_open = False
         self._show_done = False
         self._show_recap = False
         self._groups = {"main_quests": True, "side_quests": True}
@@ -683,12 +685,28 @@ class QuestHUD(tk.Tk):
             self._progress_cache[uid] = frac
         return label
 
-    def _header(self, s, current):
-        cv = self.body
-        mini = self._minimized
+    def _activity_text(self, s):
+        act = str(s.get("current_activity") or "暂无当前行动")
+        # 括号里的文件名对判断没帮助，还占掉半行
+        act = re.sub(r"[（(][a-zA-Z0-9_.\-]+\.(?:exe|py|txt|xlsx?|docx?|pdf)[）)]", "", act).strip()
+        if self._paused and not s.get("current_activity"):
+            act = "观察已暂停"
+        return act or "暂无当前行动"
+
+    def _header_height(self, act):
+        if self._minimized:
+            return 44
         # 头部高度要容得下进度环（cy=76 r=21，下沿 97）和它下面的来源标签
         # （居中在 cy+32=108，半高 small_line/2）。算小了会把「步骤」那行切掉。
-        self._header_h = 44 if mini else max(130, 108 + self._small_line // 2 + 10)
+        base = max(130, 108 + self._small_line // 2 + 10)
+        if self._act_open:
+            # 展开完整描述：两行之外每多一行就加一行高，主线名跟着往下走
+            base += max(0, len(self._wrap(act, W - 113, "body", 0)) - 2) * self._line
+        return base
+
+    def _header(self, s, current, act):
+        cv = self.body
+        mini = self._minimized
         # 顶部整条都能拖。先画拖拽底块，按钮后画、盖在上面，
         # 所以 canvas 命中测试自然优先给按钮，不用手工切热区宽度。
         self._hit(cv, 2, 2, W-4, 35, "drag", self._drag_start, GLASS_BG)
@@ -750,10 +768,7 @@ class QuestHUD(tk.Tk):
         for tag, text in hints.items():
             cv.tag_bind(tag, "<Enter>", lambda e, t=text: self._show_tip(t, e), add="+")
             cv.tag_bind(tag, "<Leave>", self._hide_tip, add="+")
-        act = str(s.get("current_activity") or "暂无当前行动")
-        act = re.sub(r"[（(][a-zA-Z0-9_.\-]+\.(?:exe|py|txt|xlsx?|docx?|pdf)[）)]", "", act)
-        if paused and not s.get("current_activity"):
-            act = "观察已暂停"
+        act = self._activity_text(s)
         if mini:
             self._hit(cv,28,7,W-185,28,"restore",self._minimize)
             self._text(cv,32,11,act,W-191,"small",GOLD if paused else WHITE,1,("restore",))
@@ -769,10 +784,29 @@ class QuestHUD(tk.Tk):
         cv.create_text(cx,cy,text=ring_text,font=self._fonts["small"],fill=WHITE,tags="expand")
         cv.create_text(cx,cy+32,text="待估算" if source=="未知" else source,font=self._fonts["small"],
                        fill=SUB,tags="expand")
-        self._text(cv,73,46,act,W-113,"body",WHITE,2,("expand",))
+        # 折叠时只给两行，第三行以后必须能点开看，否则「中途…」永远读不到后半句
+        lines_all = self._wrap(act, W-113, "body", 0)
+        self._text(cv,73,46,act,W-113,"body",WHITE,0 if self._act_open else 2,("expand",))
+        if len(lines_all) > 2:
+            shown_lines = len(lines_all) if self._act_open else 2
+            more = "act:" + ("less" if self._act_open else "more")
+            # 热区跟着文字块长高，否则展开后箭头跑到热区外面点不到
+            self._hit(cv,W-40,42,28,max(24, shown_lines*self._line - 4),more,
+                      self._toggle_act,GLASS_BG)
+            self._chevron(cv,W-26,46 + shown_lines*self._line - self._line//2 - 2,
+                          self._act_open,SUB,tags=(more,))
+            cv.tag_bind(more,"<Enter>",lambda e,t=("收起完整描述" if self._act_open
+                                                  else "展开完整描述"):self._show_tip(t,e))
+            cv.tag_bind(more,"<Leave>",self._hide_tip)
         title = current.get("title", "") if current else "暂无主线任务"
         self._text(cv,73,self._header_h-self._small_line-12,title,W-113,"small",SUB,1,("expand",))
-        self._chevron(cv,W-25,76,self._expanded,tags=("expand",))
+        self._chevron(cv,W-25,self._header_h-28 if self._act_open else 76,self._expanded,tags=("expand",))
+
+    def _toggle_act(self, e=None):
+        if self._guard_reveal(e):
+            return
+        self._act_open = not self._act_open
+        self.render()
 
     def _toggle_power(self, e=None):
         if self._guard_reveal(e):
@@ -813,10 +847,24 @@ class QuestHUD(tk.Tk):
         self._paused = not was_paused        # 立即给视觉反馈，真状态在线程回来后对齐
         self.render()
 
+    @staticmethod
+    def _priority_rank(q):
+        """模型给的 priority 决定排序；waiting 沉到最后（在等别人，不是该做的）。"""
+        table = {"high": 0, "mid": 1, "low": 2}
+        rank = table.get(str(q.get("priority") or "").lower(), 1)
+        if q.get("status") == "waiting":
+            rank += 3
+        return rank
+
+    def _sort_by_priority(self, quests):
+        # 稳定排序：同优先级保持模型给的原始顺序，不因每轮刷新而跳动
+        return sorted(quests, key=self._priority_rank)
+
     def _section(self, quests, label, color, key, readonly=False):
         cv = self.list
         y = self._draw_y
         active = [q for q in quests if q.get("status") != "done"]
+        active = self._sort_by_priority(active)
         opened = self._groups.get(key, True)
         tag = "group:"+key
         cv.create_line(10,y,W-34,y,fill=mix(GLASS_BG,SUB,.22),dash=(3,3) if self._skin_key=="journal" else ())
@@ -864,6 +912,10 @@ class QuestHUD(tk.Tk):
         cv.tag_bind(mark,"<Enter>",lambda e,t="标记完成" if not done_now else "恢复为进行中":self._show_tip(t,e))
         cv.tag_bind(mark,"<Leave>",self._hide_tip)
         note = str(q.get("note") or "暂无补充说明")
+        prio = str(q.get("priority") or "").lower()
+        if prio in ("high", "mid", "low"):
+            # 优先级是模型自己判的，得让人看得见，否则排序像是随机的
+            note = f"优先级：{'高' if prio=='high' else ('中' if prio=='mid' else '低')}\n" + note
         info = "info:"+uid
         # list 画布宽只有 W-24，图标右缘必须收在 310 以内，否则会被裁掉半个。
         self._hit(cv,W-46,y,26,27,info,lambda e,t=note:self._show_tip(t,e))
@@ -1282,14 +1334,19 @@ class QuestHUD(tk.Tk):
                 self._completion_times.pop(identity,None)
             elif not self._completed_time(q) and identity in self._completion_times:
                 q["_ui_completed_at"] = self._completion_times[identity]
-        current = next((q for q in mains if q.get("status")=="active"),None)
-        current = current or next((q for q in mains if q.get("status")!="done"),None)
+        # 顶部进度环跟的是「最该做的那条主线」，不是模型碰巧排在第一个的
+        ordered = self._sort_by_priority([q for q in mains if q.get("status") != "done"])
+        current = next((q for q in ordered if q.get("status") == "active"), None)
+        current = current or (ordered[0] if ordered else None)
         # A layered outline rather than artificial noise; transparent outside corners.
         self.list.configure(bg=GLASS_BG)
-        self._shell = rounded(self.body,1,1,W-2,126,SKINS[self._skin_key]["radius"],fill=GLASS_BG,outline=mix(GLASS_BG,SUB,.65),width=1)
+        act = self._activity_text(s)
+        self._header_h = self._header_height(act)
+        # 外壳跟着头部高度走，否则展开完整描述时卡片底边会压在文字中间
+        self._shell = rounded(self.body,1,1,W-2,self._header_h-4,SKINS[self._skin_key]["radius"],fill=GLASS_BG,outline=mix(GLASS_BG,SUB,.65),width=1)
         self.body.create_line(24,2,W-24,2,fill=mix(GLASS_HI,WHITE,.5))
         self.body.create_line(17,3,W//2,3,fill=GLASS_HI)
-        self._header(s,current)
+        self._header(s,current,act)
         self._draw_y = 4
         if self._expanded and not self._minimized:
             self._section(mains,"主线 / 今日重点" if self._skin_key=="journal" else "主线任务",GOLD,"main_quests")

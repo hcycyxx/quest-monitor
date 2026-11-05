@@ -103,6 +103,17 @@ WPS 私有格式（`.et`/`.wps`）和 PDF 只能靠 OCR，仍有错字（`缋效
 （RapidOCR，准但慢 3~5 秒）或 `windows`（系统 OCR，快但表格错字多）。
 更好的办法是让 `doc_read` 保持 `true` —— 能读到文件就完全不经过 OCR。
 
+**任务被 AI 提前标完成了 / 该完成的一直挂着** — 模型每轮自己判断 status，
+证据是轨迹里的完成信号。判断错了点任务左边的圆点手动纠正：手动改过的任务
+存进 `_user_state`，之后 AI 再也覆盖不了它（包括 reopen）。
+如果整体偏早或偏晚，改 `engine\llm_engine.py` 的 `SYSTEM_PROMPT` 第 9~11 条。
+
+**列表顺序看不懂** — 按 `priority`（high/mid/low）排，同优先级保持模型给的顺序，
+`waiting` 沉到最后。优先级在任务 ⓘ 气泡第一行显示。模型没给 priority 的按 mid 排。
+
+**顶部「当前行动」被截断成「中途…」** — 默认两行，超过两行时右侧出现小箭头，
+点一下展开完整描述，再点收起。
+
 ## 改它
 
 - `engine/win_watch.py` 采样频率、心跳间隔、自身窗口过滤（`SELF_PREFIXES`）、
@@ -113,7 +124,9 @@ WPS 私有格式（`.et`/`.wps`）和 PDF 只能靠 OCR，仍有错字（`缋效
   `SCAN_ROOTS`（按文件名找文件时扫哪些目录）、`INDEX_TTL`（索引多久重建）
 - `engine/llm_engine.py` 提示词（`SYSTEM_PROMPT`）、轨迹压缩（`read_log_tail`）、
   内容档位（`CONTENT_LEVELS`）
-- `engine/state_store.py` 合并规则：用户操作优先于 AI，`_user_state` 不会被覆盖
-- `ui/quest_window.py` 四套皮肤在 `SKINS` 字典，窗口宽 `W=336` 是布局基准
+- `engine/state_store.py` 合并规则：用户操作优先于 AI，`_user_state` 不会被覆盖；
+  `merge_ai_state` 里 `reopen` 分支控制模型能否把已完成的任务改回 active
+- `ui/quest_window.py` 四套皮肤在 `SKINS` 字典，窗口宽 `W=336` 是布局基准；
+  排序在 `_priority_rank`，头部高度在 `_header_height`
 
 改完 `python engine\ctl.py pause` 再 `resume` 让引擎重载，界面改动要 `.\restart_all.ps1`。

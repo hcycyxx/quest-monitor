@@ -49,16 +49,22 @@ SYSTEM_PROMPT = """你是任务面板分析引擎。用户在你不知道的时�
 
 规则：
 1. main_quests 主线：今天的主要工作目标。side_quests 支线：中途插入的短任务（如临时搜文件、回消息、整理包材）。
-2. status 取值 active/pending/done。steps 是可勾选步骤。progress 简短如"2/3"或"草拟中"。note 记录判断依据（窗口标题+时间，或看到了什么）。
-3. current_activity：一句话描述他现在在干嘛。要具体到内容，不要只说应用名：写"在改 KYNKO 报价表的单价栏"，不要写"在用 WPS"。
-4. suggestion：一句话建议（下一步做什么、是否跑偏、支线该收尾回主线了）。
-5. 幂等节俭：与上次状态相比无实质变化时，输出 {"changed": false} 即可，不要重新生成全部内容。
-6. 从轨迹推断任务时要具体（文件名、客户名、单据号都保留）。看到新文档/新客户名可自动建支线或更新主线。
-7. 看到的内容里如果有明确的业务动作（收到订单、客户问价、要发货），那是新支线的信号，别当成噪声。
-8. 只输出 JSON，不要 markdown 代码块，不要解释。
+2. status 取值 active/pending/done/waiting。steps 是可勾选步骤。progress 简短如"2/3"或"草拟中"。note 记录判断依据（窗口标题+时间，或看到了什么）。
+3. priority 取值 high/mid/low：你自己判断这项任务有多重要。客户下单、发货、交期、金额大、有人在等回复的，给 high；日常整理、查资料给 low。同一天里 high 的任务永远排在前面。
+4. current_activity：一句话描述他现在在干嘛。要具体到内容，不要只说应用名：写"在改 KYNKO 报价表的单价栏"，不要写"在用 WPS"。这句话会显示在面板顶部，超过两行会被折叠，所以不要写成一段话，控制在 40 字以内。
+5. suggestion：一句话建议（下一步做什么、是否跑偏、支线该收尾回主线了）。
+6. 幂等节俭：与上次状态相比无实质变化时，输出 {"changed": false} 即可，不要重新生成全部内容。
+7. 从轨迹推断任务时要具体（文件名、客户名、单据号都保留）。看到新文档/新客户名可自动建支线或更新主线。
+8. 看到的内容里如果有明确的业务动作（收到订单、客户问价、要发货），那是新支线的信号，别当成噪声。
+
+自主判断（重要）：
+9. 你有权自己把任务标成 done，但要给证据：轨迹里出现了明确完成信号（文件另存为带"最终/已发/Final"、邮件发出去了、报价表保存关闭、聊天里说了"已发你"）才标 done。只是打开看过、切走了、超过一小时没碰，都不算完成，那是 pending 或 waiting。
+10. 一个任务你之前标过 done，但后面轨迹显示他又打开同一个文件继续改（说明当时判断早了），就把它改回 active 并在该项里写 "reopen": true。用户手动勾过的任务不要碰，本地会保留他的选择。
+11. 支线超过两小时没再碰、而且主线还开着，就把它标 done（收尾），别让它一直挂在列表里。
+12. 只输出 JSON，不要 markdown 代码块，不要解释。
 
 输出格式：
-{"changed": true/false, "state": {"main_quests":[{"id":"M1","title":"...","status":"active","progress":"...","note":"...","steps":[{"text":"...","done":false}]}], "side_quests":[同结构], "current_activity":"...", "suggestion":"...", "updated_at":"ISO时间"}}
+{"changed": true/false, "state": {"main_quests":[{"id":"M1","title":"...","status":"active","priority":"high","progress":"...","note":"...","steps":[{"text":"...","done":false}]}], "side_quests":[同结构], "current_activity":"...", "suggestion":"...", "updated_at":"ISO时间"}}
 只输出 JSON。"""
 
 
@@ -220,12 +226,14 @@ def state_digest(state):
             title = q.get("title", "")
             status = q.get("status", "")
             prog = q.get("progress", "")
+            prio = q.get("priority", "")
             steps = q.get("steps") or []
             sp = ""
             if steps:
                 done = sum(1 for s in steps if s.get("done"))
                 sp = f" 步骤{done}/{len(steps)}"
-            out.append(f"  [{qid}] {title} <{status}> {prog}{sp}")
+            ptag = f" !{prio}" if prio else ""
+            out.append(f"  [{qid}] {title} <{status}>{ptag} {prog}{sp}")
     sug = state.get("suggestion")
     if sug:
         out.append("上次建议: " + str(sug))

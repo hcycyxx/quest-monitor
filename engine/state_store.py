@@ -179,18 +179,32 @@ def merge_ai_state(proposal, latest, max_active=8):
                             s['done'] = bool(overrides[text])
                 else:
                     if prior.get('status') == 'done':
-                        q = copy.deepcopy(prior)
+                        # 用户没碰过、只是模型自己标完成的任务，允许模型重开：
+                        # 但必须是明确要求（reopen=true），否则一次误判的完成
+                        # 会让任务永久沉到历史里，再也回不到主线。
+                        if q.get('status') != 'done' and q.get('reopen'):
+                            for field in ('completed_at', 'completedAt', 'done_at'):
+                                q.pop(field, None)
+                            q['reopened_at'] = now()
+                        else:
+                            q = copy.deepcopy(prior)
                     previous_steps = {str(s.get('text', '')).strip(): s.get('done') for s in prior.get('steps', [])}
                     for s in q['steps']:
                         if previous_steps.get(str(s.get('text', '')).strip()):
                             s['done'] = True
+                q.pop('reopen', None)
                 if q.get('status') == 'done':
                     for field in ('completed_at', 'completedAt', 'done_at'):
                         if prior.get(field):
                             q[field] = prior[field]
+                    # 模型自己判定完成时必须落一个时间，否则时间轴显示「完成时间未记录」，
+                    # 排序也失去依据（历史上手动完成的任务没有这个字段，不回填）。
+                    if not any(q.get(f) for f in ('completed_at', 'completedAt', 'done_at')):
+                        q['completed_at'] = now()
                 else:
                     for field in ('completed_at', 'completedAt', 'done_at'):
                         q.pop(field, None)
+            q.pop('reopen', None)
             output.append(q)
         # The model's abbreviated response is never an instruction to delete history
         # or a task that the user has explicitly edited.
