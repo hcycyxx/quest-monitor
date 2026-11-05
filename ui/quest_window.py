@@ -219,6 +219,7 @@ class QuestHUD(tk.Tk):
         self._groups = {"main_quests": True, "side_quests": True}
         self._open_steps = {}
         self._tip = None
+        self._tip_text = None
         self._last_mtime = 0
         self._serial = 0
         self._motion_job = None
@@ -423,25 +424,66 @@ class QuestHUD(tk.Tk):
         self._last_mtime = os.path.getmtime(STATE_FILE)
         self.render()
 
+    def _tip_xy(self, px, py, tw, th):
+        """给气泡挑一个不会盖住指针的位置。
+
+        盖住指针就死循环：指针一进气泡，画布收到 <Leave>，气泡销毁，指针回到
+        画布又 <Enter>，气泡再弹出来 —— 屏幕上就是疯狂闪烁。所以这里按
+        左 / 右 / 上 / 下 依次试，第一个不压指针的就用。
+        面板默认贴屏幕右侧，所以「放指针左边」优先，正好往屏幕中间展开。
+        """
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        gap = 14
+        tries = (
+            (px - tw - gap, py - 10),        # 左边
+            (px + gap, py - 10),             # 右边
+            (px - tw // 2, py - th - gap),   # 上方
+            (px - tw // 2, py + gap),        # 下方
+        )
+        fallback, fallback_area = None, None
+        for cx, cy in tries:
+            x = max(6, min(cx, sw - tw - 6))
+            y = max(6, min(cy, sh - th - 6))
+            if not (x <= px < x + tw and y <= py < y + th):
+                return x, y
+            ox = max(0, min(x + tw, px + 1) - max(x, px))
+            oy = max(0, min(y + th, py + 1) - max(y, py))
+            area = ox * oy
+            if fallback is None or area < fallback_area:
+                fallback, fallback_area = (x, y), area
+        return fallback
+
     def _show_tip(self, text, e):
-        if self._tip:
-            self._tip.destroy()
-        # 气泡自带不透明底色，压在文字层上会被遮一半
-        self._hide_overlay()
+        # 同一段提示已经在显示就别重建：tag_bind 会连着触发好几次 <Enter>，
+        # 每次都 destroy + create 会让窗口闪一下。
+        if self._tip is not None and self._tip_text == text:
+            return
+        if self._tip is not None:
+            try:
+                self._tip.destroy()
+            except tk.TclError:
+                pass
+            self._tip = None
+        self._tip_text = text
+        px, py = self.winfo_pointerx(), self.winfo_pointery()
         self._tip = tk.Toplevel(self)
         self._tip.overrideredirect(True)
         self._tip.attributes("-topmost", True)
-        x = self.winfo_pointerx() + 14
-        y = self.winfo_pointery() + 10
-        self._tip.geometry(f"+{x}+{y}")
+        self._tip.geometry(f"+{px}+{py}")       # 先随便放，量完尺寸再挪
         fr = tk.Frame(self._tip, bg=GLASS_HI, highlightthickness=1, highlightbackground=STROKE)
         fr.pack(fill="both", expand=True)
         tk.Label(fr, text=text, font=F_SMALL, fg=SUB, bg=GLASS_HI,
                  wraplength=round(280*self._ui_scale), justify="left").pack(padx=10, pady=8)
         self._tip.update_idletasks()
-        x = max(0, min(x, self.winfo_screenwidth()-self._tip.winfo_reqwidth()-8))
-        y = max(0, min(y, self.winfo_screenheight()-self._tip.winfo_reqheight()-8))
-        self._tip.geometry(f"+{x}+{y}")
+        tw, th = self._tip.winfo_reqwidth(), self._tip.winfo_reqheight()
+        x, y = self._tip_xy(px, py, tw, th)
+        self._tip.geometry(f"{tw}x{th}+{x}+{y}")
+        # 气泡对鼠标完全透明：指针就算扫过它也不会触发 <Leave>，
+        # 从根上断掉「进气泡→收气泡→回画布→再弹气泡」这个循环。
+        self._set_click_through(self._tip)
+        # 气泡自己抬到最上层就够了，不需要把文字层收起来 ——
+        # 每收一次就是整块文字淡出再淡入，那才是看着最闪的东西。
+        self._tip.lift()
 
     def tick(self):
         try:
@@ -471,16 +513,15 @@ class QuestHUD(tk.Tk):
         self.after(3000, self.tick)
 
     def _hide_tip(self, e=None):
-        if not self._tip:
+        self._tip_text = None
+        if self._tip is None:
             return
-        self._tip.destroy()
+        try:
+            self._tip.destroy()
+        except tk.TclError:
+            pass
         self._tip = None
-        # 气泡收起后把文字层放回来（设置面板还开着就不放）。
-        # 这里清掉节流时间戳而不是 force：render 每帧都会调 _hide_tip，
-        # force 会让同一帧重画两次文字层。
-        self._ov_stamp = 0.
-        if not self._settings_open:
-            self._sync_overlay()
+        # 气泡一直没盖住文字层（见 _show_tip），所以这里不需要再补画一次。
 
     def _cancel_edge(self):
         if self._edge_job:
@@ -554,11 +595,14 @@ class QuestHUD(tk.Tk):
         if not self._topmost:
             return
         try:
+            self.attributes("-topmost", True)
+            self.lift()
             if self._ov is not None and self._ov_visible:
                 self._ov.attributes("-topmost", True)
                 self._ov.lift()
-            self.attributes("-topmost", True)
-            self.lift()
+            # 气泡最后抬：它可能压在面板左侧那一块上，不抬就会被文字层盖住。
+            if self._tip is not None:
+                self._tip.lift()
         except tk.TclError:
             pass
 
