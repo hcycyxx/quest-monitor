@@ -232,6 +232,8 @@ class QuestHUD(tk.Tk):
         # 用户拖过滑块就记下来，之后换皮肤不再覆盖他的选择
         self._alpha_custom = "alpha" in saved
         self._alpha = self._clamp_alpha(saved.get("alpha", SKINS[self._skin_key]["alpha"]))
+        # 总在最前：默认开。有些全屏程序会抢走 z 序，tick 里会定期抢回来。
+        self._topmost = bool(saved.get("topmost", True))
         self._settings = None
         self._settings_body = None
         self._settings_open = False
@@ -239,6 +241,7 @@ class QuestHUD(tk.Tk):
         self._slider = None
         try:
             self.attributes("-alpha", self._alpha)
+            self.attributes("-topmost", self._topmost)
         except tk.TclError:
             pass
         # 文字层：主窗口半透明时，文字另画在一个 alpha=1.0 的穿透窗口上
@@ -413,6 +416,7 @@ class QuestHUD(tk.Tk):
                 self.render()
             except Exception:
                 pass
+        self._raise_topmost()
         self.after(3000, self.tick)
 
     def _hide_tip(self, e=None):
@@ -479,6 +483,33 @@ class QuestHUD(tk.Tk):
         self._edge_pinned = not self._edge_pinned
         self.render()
         self._schedule_edge()
+
+    def _toggle_topmost(self, e=None):
+        """总在最前。关掉之后面板会被别的窗口盖住，但采样和分析照跑。"""
+        if self._guard_reveal(e):
+            return
+        self._topmost = not self._topmost
+        try:
+            self.attributes("-topmost", self._topmost)
+            if self._ov is not None:
+                self._ov.attributes("-topmost", self._topmost)
+        except tk.TclError:
+            pass
+        save_ui(topmost=self._topmost)
+        self.render()
+
+    def _raise_topmost(self):
+        """有些全屏程序会抢走 z 序。定时抢回来，只在被盖住时才动手。"""
+        if not self._topmost:
+            return
+        try:
+            if self._ov is not None and self._ov_visible:
+                self._ov.attributes("-topmost", True)
+                self._ov.lift()
+            self.attributes("-topmost", True)
+            self.lift()
+        except tk.TclError:
+            pass
 
     def _escape(self, e=None):
         self._hide_tip()
@@ -672,20 +703,26 @@ class QuestHUD(tk.Tk):
             brand = SKINS[self._skin_key]["brand"] + (" · 暂停" if paused else "")
             cv.create_text(30,20,anchor="w",text=brand,font=self._fonts["small"],
                            fill=SUB,tags="drag")
-        self._hit(cv,W-146,7,25,27,"skin",self._skin_picker,GLASS_BG)
+        self._hit(cv,W-160,7,25,27,"skin",self._skin_picker,GLASS_BG)
         for dx,dy,c in ((-3,-3,SUB),(4,-3,SUB),(-3,4,SUB),(4,4,SUB)):
-            cv.create_oval(W-134+dx-2,20+dy-2,W-134+dx+2,20+dy+2,fill=c,outline="",tags="skin")
+            cv.create_oval(W-148+dx-2,20+dy-2,W-148+dx+2,20+dy+2,fill=c,outline="",tags="skin")
         # 暂停/继续：停掉采样看门与 LLM 引擎，面板本身留着，否则没按钮点继续
-        self._hit(cv,W-114,7,24,27,"power",self._toggle_power)
+        self._hit(cv,W-132,7,24,27,"power",self._toggle_power)
         pc = GOLD if paused else SUB
         if paused:
-            cv.create_polygon(W-108,15,W-108,25,W-100,20,fill=pc,outline="",tags="power")
+            cv.create_polygon(W-126,15,W-126,25,W-118,20,fill=pc,outline="",tags="power")
         else:
-            cv.create_line(W-107,15,W-107,25,fill=pc,width=2.2,tags="power")
-            cv.create_line(W-99,15,W-99,25,fill=pc,width=2.2,tags="power")
-        for name, x, callback in (("pin",W-84,self._pin_edge),
-                                   ("minus",W-54,self._minimize),
-                                   ("close",W-24,self._close)):
+            cv.create_line(W-125,15,W-125,25,fill=pc,width=2.2,tags="power")
+            cv.create_line(W-117,15,W-117,25,fill=pc,width=2.2,tags="power")
+        # 总在最前：一个图钉横放的小图标，开启时金色
+        self._hit(cv,W-104,7,24,27,"top",self._toggle_topmost)
+        tc = GOLD if self._topmost else SUB
+        cv.create_line(W-99,15,W-99,20,fill=tc,width=1.6,tags="top")
+        cv.create_line(W-95,15,W-95,20,fill=tc,width=1.6,tags="top")
+        cv.create_polygon(W-101,20,W-93,20,W-97,25,fill=tc,outline="",tags="top")
+        for name, x, callback in (("pin",W-76,self._pin_edge),
+                                   ("minus",W-48,self._minimize),
+                                   ("close",W-20,self._close)):
             self._hit(cv,x-12,7,24,27,name,callback)
             if name == "minus":
                 cv.create_line(x-5,20,x+5,20,fill=SUB,width=1.4,tags=name)
@@ -704,6 +741,7 @@ class QuestHUD(tk.Tk):
         hints = {
             "skin": "皮肤与透明度",
             "power": "继续（重启采样与 AI 分析）" if self._paused else "暂停（停止采样，不再消耗 token）",
+            "top": "总在最前：关闭后会被其他窗口盖住" if self._topmost else "总在最前：已关闭，点击重新置顶",
             "pin": ("固定：贴边后不自动缩成把手" if not self._edge_pinned else "取消贴边固定")
                    if self._dock_side else "把面板拖到屏幕边缘后，这里可以固定成常驻展开",
             "minus": "收起成一条窄条",
@@ -1065,6 +1103,14 @@ class QuestHUD(tk.Tk):
     def _fill_settings(self):
         """重建面板内容。换皮肤后颜色变了，直接重画一遍最省事。"""
         body = self._settings_body
+        # 容器自己的底色也要跟着换。只重建子控件的话，旧皮肤的底色会留在
+        # 下面，新皮肤的浅色行块浮在深色底上，看着像一排输入框。
+        try:
+            body.configure(bg=GLASS_HI, highlightbackground=STROKE)
+            if self._settings is not None:
+                self._settings.configure(bg=GLASS_HI)
+        except tk.TclError:
+            pass
         for child in body.winfo_children():
             child.destroy()
         self._pct_label = None
@@ -1464,16 +1510,18 @@ class QuestHUD(tk.Tk):
 
     @staticmethod
     def _set_click_through(win):
-        """WS_EX_LAYERED|WS_EX_TRANSPARENT|WS_EX_NOACTIVATE：看得见，点得到下面的窗口。
+        """WS_EX_TRANSPARENT|WS_EX_NOACTIVATE：看得见，但点击落到下面的窗口。
 
-        Tk 的 Toplevel 有两层 HWND（wrapper + 内容窗口），样式加在哪一层都不算稳，
-        所以两层都加一遍。加失败也不致命，只是点击会落到文字层上。
+        只加这两个位，绝不碰 WS_EX_LAYERED —— Tk 的 Toplevel 内层 HWND 一旦被
+        标成 layered 而又没有 SetLayeredWindowAttributes，它会被当成 alpha=0
+        合成，内容直接看不见（这正是文字层"完全没效果"的原因）。
+        layered 由 -transparentcolor 自己加在外层，不用我们管。
         """
         if os.name != "nt":
             return
         import ctypes
         GWL_EXSTYLE = -20
-        WS_EX_LAYERED, WS_EX_TRANSPARENT, WS_EX_NOACTIVATE = 0x80000, 0x20, 0x8000000
+        WS_EX_TRANSPARENT, WS_EX_NOACTIVATE = 0x20, 0x8000000
         u = ctypes.windll.user32
         inner = win.winfo_id()
         handles = [inner]
@@ -1484,7 +1532,7 @@ class QuestHUD(tk.Tk):
             try:
                 style = u.GetWindowLongW(hwnd, GWL_EXSTYLE)
                 u.SetWindowLongW(hwnd, GWL_EXSTYLE,
-                                 style | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
+                                 style | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
             except (AttributeError, OSError):
                 pass
 
@@ -1512,6 +1560,7 @@ class QuestHUD(tk.Tk):
             ov.deiconify()
             # deiconify 之后样式可能被重置，重新压一遍穿透
             self._set_click_through(ov)
+            ov.attributes("-topmost", self._topmost)
             ov.lift()
             self._ov_visible = True
         except tk.TclError:
