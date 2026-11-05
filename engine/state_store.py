@@ -10,6 +10,9 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 KEYS = ('main_quests', 'side_quests')
+# 这两句是常驻文案，空着比过时更糟：面板顶部会变成一片空白，
+# 用户看不出助手还在不在工作。
+TEXT_FIELDS = ('current_activity', 'suggestion')
 TZ = timezone(timedelta(hours=8))
 
 
@@ -233,6 +236,15 @@ def merge_ai_state(proposal, latest, max_active=8):
                 q['steps'] = q.get('steps', [])[:10]
                 kept.append(q)
         result[key] = kept
+
+    # 面板顶部那块是常驻的：模型偶尔会回空字符串（这一轮它觉得"没什么可说的"），
+    # 直接落盘会让标题瞬间变空白，看着像助手挂了。空的时候沿用上一次的说法，
+    # 等模型真的给出新描述再换 —— 旧描述总比一片空白有用。
+    for field in TEXT_FIELDS:
+        if not str(result.get(field) or '').strip():
+            old = str(latest.get(field) or '').strip()
+            if old:
+                result[field] = latest[field]
     return result
 
 

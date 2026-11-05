@@ -50,6 +50,18 @@ OCR_CROP_TOP = {
     "excel.exe": 150, "winword.exe": 150, "powerpnt.exe": 150,
 }
 
+# 聊天软件：UIA 会把左侧「最近会话」整列和右侧正文混成一串，业主群、公众号、
+# 图书馆通知全塞进来，实测 700 字里只有 111~254 字是真正在聊的内容，剩下的
+# 全是别人家的消息摘要 —— 既挤掉正文，又让模型误以为你在看那些群。
+CHAT_EXES = {
+    "weixin.exe", "wechat.exe", "weixin", "wechatapp.exe",
+    "qq.exe", "qqnt.exe", "tim.exe", "wxwork.exe",
+    "telegram.exe", "discord.exe", "slack.exe", "dingtalk.exe",
+    "feishu.exe", "lark.exe",
+}
+# 会话列表的稳定特征：搜索框下面跟着「公众号 / 服务号 / [N条] / 消息免打扰 / 已置顶」。
+_SIDEBAR_HINTS = ("条]", "公众号", "服务号", "订阅号", "消息免打扰", "已置顶")
+
 CTRL = {
     50002: "CheckBox", 50003: "ComboBox", 50004: "Edit", 50005: "Hyperlink",
     50007: "ListItem", 50008: "List", 50011: "MenuItem", 50013: "RadioButton",
@@ -382,6 +394,25 @@ def strip_noise(text):
 
 
 
+def drop_chat_sidebar(text):
+    """聊天软件里把左侧会话列表切掉，只留右侧聊天正文。
+
+    UIA 拿到的是「正文 · 搜索 · 会话A · 会话B …」这一整串，会话列表占了大半。
+    分界点找「搜索」——它是搜索框的占位文字，紧挨着会话列表上沿；
+    但如果「搜索」出现太早（<8% 位置）或者后面没有会话列表特征词，
+    说明这次拿到的本来就是正文，不能切。宁可少切，不能把正文切没了。
+    """
+    if not text:
+        return text
+    i = text.find("搜索")
+    if i < 0 or i < len(text) * 0.08:
+        return text
+    tail = text[i:]
+    if not any(h in tail for h in _SIDEBAR_HINTS):
+        return text
+    return text[:i].rstrip(" ·")
+
+
 def tidy(text):
     """系统 OCR 把每个汉字都用空格隔开，读起来像天书，也白占 token。
     只合并"两个汉字之间"的空格，拉丁词之间的空格要留着。"""
@@ -460,7 +491,12 @@ def probe(hwnd, want_ocr=True, exe="", title=""):
             if len(alt) > len(text) or forced:
                 text, src = alt, ("ocr" if not text else "uia+ocr")
 
-    text = strip_noise(tidy(text))[:TEXT_CAP]
+    text = strip_noise(tidy(text))
+    # 聊天软件先切掉左侧会话列表再截断：顺序反了的话，会话列表会先把 700 字
+    # 的额度吃光，正文只剩开头一百来字。
+    if (exe or "").lower() in CHAT_EXES:
+        text = drop_chat_sidebar(text)
+    text = text[:TEXT_CAP]
     return {"src": src if text else "none",
             "text": text,
             "ms": int((time.time() - t0) * 1000)}
