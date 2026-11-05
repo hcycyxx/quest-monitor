@@ -418,6 +418,48 @@ class QuestHUD(tk.Tk):
         self.body.tag_bind("scrollbar","<Button-1>",move)
         self.body.tag_bind("scrollbar","<B1-Motion>",move)
 
+    @staticmethod
+    def _word_safe(text, i):
+        """在 text[i] 前断开会不会劈开一个拉丁单词。"""
+        if i <= 0 or i >= len(text):
+            return True
+        a, b = text[i-1], text[i]
+
+        def latin(c):
+            return c.isascii() and (c.isalnum() or c in "._-")
+        if not (latin(a) and latin(b)):
+            return True
+        return a in "._-" or b in "._-"
+
+    def _fix_orphan(self, text, lines, px, f):
+        """第二行只剩一两个字时，重新挑一个读得下去的断点。
+
+        中文贪心断行本身没问题，只有「屏幕监 / 视」这种孤行才难看。
+        所以只在这一种情况下动断点，正常的两行保持原样 —— 强行均衡
+        反而会把「咨询对话」劈成「咨询对 / 话」。
+        """
+        if len(lines) != 2:
+            return lines
+        first, second = lines[0], lines[1]
+        if f.measure(second) >= f.measure(first) * 0.45:
+            return lines
+        best = None
+        for i in range(1, len(text)):
+            if not self._word_safe(text, i):
+                continue
+            a, b = text[:i].strip(), text[i:].strip()
+            if not a or not b:
+                continue
+            wa, wb = f.measure(a), f.measure(b)
+            if wa > px or wb > px or wb < wa * 0.45:
+                continue
+            score = abs(wa - wb)
+            if text[i-1] in "，。、；：）】」 ":
+                score -= px * 0.35      # 断在标点后读起来更顺
+            if best is None or score < best[0]:
+                best = (score, [a, b])
+        return best[1] if best else lines
+
     def _wrap(self, text, width, font="body", limit=0):
         f = self._fonts[font]
         lines, line = [], ""
@@ -429,6 +471,8 @@ class QuestHUD(tk.Tk):
                 line += ch
         if line or not lines:
             lines.append(line)
+        if len(lines) == 2 and "\n" not in str(text):
+            lines = self._fix_orphan(str(text), lines, width*self._ui_scale, f)
         if limit and len(lines) > limit:
             lines = lines[:limit]
             while lines[-1] and f.measure(lines[-1] + "…") > width*self._ui_scale:
@@ -520,7 +564,9 @@ class QuestHUD(tk.Tk):
     def _header(self, s, current):
         cv = self.body
         mini = self._minimized
-        self._header_h = 44 if mini else max(112, 47 + self._line*2 + self._small_line)
+        # 头部高度要容得下进度环（cy=76 r=21，下沿 97）和它下面的来源标签
+        # （居中在 cy+32=108，半高 small_line/2）。算小了会把「步骤」那行切掉。
+        self._header_h = 44 if mini else max(130, 108 + self._small_line // 2 + 10)
         # 顶部整条都能拖。先画拖拽底块，按钮后画、盖在上面，
         # 所以 canvas 命中测试自然优先给按钮，不用手工切热区宽度。
         self._hit(cv, 2, 2, W-4, 35, "drag", self._drag_start, GLASS_BG)
