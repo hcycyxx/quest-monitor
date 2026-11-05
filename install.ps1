@@ -117,6 +117,13 @@ if ($eff.api_key -eq "YOUR_API_KEY") {
     & $py "engine\ctl.py" resume
 }
 
+# Version backup hook: every commit gets mirrored to a bare repo + bundle under
+# %USERPROFILE%, outside the workspace. Skipped silently when not a git checkout.
+$hookScript = Join-Path $PSScriptRoot "tools\install-hooks.ps1"
+if (Test-Path $hookScript) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $hookScript | Out-Null
+}
+
 Write-Host ""
 Write-Host "Status:" -ForegroundColor Cyan
 & $py "engine\ctl.py"

@@ -38,14 +38,15 @@ if ($remotes -notcontains "archive") {
     git -C $root remote add archive $archive
 }
 
-# 2. Push every branch and tag.
+# 2. Mirror every branch, tag and ref. --mirror is the only form that carries
+#    tags along with branches; "--all --tags" is rejected by git.
 $rev = (git -C $root rev-parse --short HEAD).Trim()
-git -C $root push --quiet archive --all --tags 2>$null
+& git -C $root push --quiet --mirror archive 2>&1 | Out-Null
 Write-Host "pushed $rev -> $archive"
 
 # 3. One bundle file: offline-clonable, survives the bare repo disappearing.
 $bundle = Join-Path $store "sidequest-$rev.bundle"
-git -C $root bundle create $bundle --all 2>$null | Out-Null
+& git -C $root bundle create $bundle --all 2>&1 | Out-Null
 Write-Host "bundle $bundle"
 
 # 4. Snapshot the task state. It is gitignored but it is the most valuable file.

@@ -1,0 +1,13 @@
+#!/bin/sh
+# Auto-backup after every commit: bare repo + bundle + task-state snapshot,
+# all outside the workspace. See tools/backup.ps1 for details.
+#
+# This copy lives in the repo so it survives a wiped workspace; run
+#   powershell -ExecutionPolicy Bypass -File tools\install-hooks.ps1
+# (or install.ps1, which calls it) to put it back into .git/hooks/.
+#
+# Kept pure ASCII on purpose: git runs it through sh, and a BOM or CJK bytes
+# here makes the hook silently do nothing.
+root=$(git rev-parse --show-toplevel)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root/tools/backup.ps1" >/dev/null 2>&1 &
+exit 0
