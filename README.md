@@ -156,7 +156,7 @@ RapidOCR 比系统 OCR 准得多但慢十倍（3~5 秒 vs 0.4 秒）。内容抓
 | 安装包 | [SideQuest-Setup-1.1.0.exe](https://github.com/hcycyxx/sidequest/releases/latest)（约 100 MB） | 装到本机、要开始菜单和开机启动 |
 | 便携版 | [SideQuest-portable-1.1.0.zip](https://github.com/hcycyxx/sidequest/releases/latest)（约 140 MB） | 不想动系统、或安装包报"拒绝访问"时 |
 
-便携版解压到任意目录，双击里面的 `SideQuest 便携版.bat` 就能跑，配置和总结都留在旁边的 `data\` 里，删目录即卸载。
+便携版解压到任意目录，双击里面的 `start-portable.bat` 就能跑，配置和总结都留在旁边的 `data\` 里，删目录即卸载。
 
 **安装包如果报 `Setup was unable to create the directory "...\Temp\is-XXXX.tmp" / Error 5: 拒绝访问`**，是 Inno Setup 在 `%TEMP%` 建受保护临时目录被拒（常见于 Temp 目录 ACL 被改过、或被安全软件锁住）。三个办法：用便携版；先把 `%TEMP%` 换到别处（`set TEMP=D:\temp`）再跑；或者用管理员身份运行安装包。
 
