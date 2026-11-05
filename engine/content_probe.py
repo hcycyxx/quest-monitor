@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 """内容层：窗口标题之外，再抓一层"这个窗口里具体在干什么"。
 
-两条来源，都不联网、不花 token：
-1. UIA（UI Automation）：直接问程序要控件名/值/文档正文。快（100~400ms），
+三条来源，都不联网、不花 token：
+1. 读文件：窗口标题里的文档名 → 找到磁盘上的 .xlsx/.docx → 直接解析。
+   一个字都不会错，2 毫秒。办公文档优先走这条。
+2. UIA（UI Automation）：直接问程序要控件名/值/文档正文。快（100~400ms），
    质量取决于程序配不配合 —— 浏览器、Electron 应用、资源管理器好用；
    WPS / Office 基本什么都不给。
-2. Windows 自带 OCR：截图后调系统 OCR 引擎认字。什么程序都能用，代价约 0.3~0.7 秒
-   CPU，且排版复杂的表格会认错。
+3. Windows 自带 OCR：截图后调系统 OCR 引擎认字。什么程序都能用，代价约 0.3~0.7 秒
+   CPU，但表格里的字会认错（「绩效」→「缋效」）。只在前两条都不行时才用。
 
 产出的**文字**才写进 win_log.jsonl，截图在内存里用完即丢，不落盘、不上传。
 依赖全部可选：缺 comtypes / winsdk / Pillow 时各自降级，绝不会让看门进程挂掉。
@@ -14,8 +16,12 @@
 import ctypes
 import ctypes.wintypes as wt
 import io
+import os
 import re
+import tempfile
 import time
+
+import doc_reader
 
 user32 = ctypes.windll.user32
 
@@ -182,7 +188,7 @@ def _grab(hwnd, crop_top=0):
     return ImageGrab.grab(bbox=(r.left, top, r.right, r.bottom), all_screens=True)
 
 
-def _ocr_direct(img):
+def _ocr_windows(img):
     try:
         import asyncio
         from winsdk.windows.globalization import Language
@@ -221,6 +227,78 @@ def _ocr_direct(img):
         loop.close()
 
 
+# ---- RapidOCR（可选）：准确率高得多，代价是慢 ----
+# 同一张绩效表，系统 OCR 把「绩效」认成「缋效」、「报价」认成「报佾」，
+# 九个常用词一个都没认对；RapidOCR 9/9 全对。但 3 秒 vs 0.35 秒。
+# 只在装了 rapidocr 时启用 —— 内容抓取本来就在后台线程跑，45 秒一轮，3 秒不碍事。
+_rapid = None
+_rapid_failed = False
+
+
+def _ocr_rapid(img):
+    global _rapid, _rapid_failed
+    if _rapid_failed:
+        return ""
+    if _rapid is None:
+        try:
+            from rapidocr import RapidOCR
+        except ImportError:
+            _rapid_failed = True
+            return ""
+        try:
+            _rapid = RapidOCR()
+        except Exception:
+            _rapid_failed = True
+            return ""
+    if img.width > OCR_MAX_W:
+        img = img.resize((OCR_MAX_W, int(img.height * OCR_MAX_W / img.width)))
+    tmp = os.path.join(tempfile.gettempdir(), "sidequest_ocr.png")
+    try:
+        img.convert("RGB").save(tmp)
+        res = _rapid(tmp)
+    except Exception:
+        return ""
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+    texts = getattr(res, "txts", None)
+    if texts is None:
+        try:
+            texts = res[1]
+        except Exception:
+            return ""
+    return "\n".join(t for t in texts if t)
+
+
+OCR_ENGINE = "auto"          # auto / rapid / windows / off，由 win_watch 按配置设置
+DOC_READ = True              # 是否读磁盘上的办公文档
+
+
+def set_ocr_engine(name):
+    global OCR_ENGINE
+    if name in ("auto", "rapid", "windows", "off"):
+        OCR_ENGINE = name
+
+
+def set_doc_read(flag):
+    global DOC_READ
+    DOC_READ = bool(flag)
+
+
+def _ocr_direct(img):
+    """按 OCR_ENGINE 选引擎。auto = 装了 RapidOCR 就用它，否则用系统 OCR。"""
+    if OCR_ENGINE == "off":
+        return ""
+    if OCR_ENGINE == "windows":
+        return _ocr_windows(img)
+    if OCR_ENGINE == "rapid":
+        return _ocr_rapid(img)
+    text = _ocr_rapid(img) if _have("rapidocr") else ""
+    return text or _ocr_windows(img)
+
+
 # OCR 必须在自己线程里跑。comtypes 建 UIA 对象时把主线程的 COM 初始化成 STA，
 # 而 winsdk 的 async 完成回调要回到那个 STA 线程 —— 主线程正卡在
 # run_until_complete 里等它，两边互等，进程就死在那里（实测卡死过一次）。
@@ -242,9 +320,14 @@ def _ocr_worker():
             box["e"] = repr(exc)
 
 
-def _ocr(img, timeout=8.0):
+def _ocr(img, timeout=25.0):
     """把图交给独立线程做 OCR，主线程最多等 timeout 秒。
-    超时就判 OCR 不可用并永久关掉它 —— 看门进程不能被一个卡住的 API 拖死。"""
+    超时就判 OCR 不可用并永久关掉它 —— 看门进程不能被一个卡住的 API 拖死。
+
+    timeout 给到 25 秒是因为 RapidOCR 在 1400px 宽的表格上要 3~5 秒，
+    系统 OCR 只要 0.4 秒。抓内容本来就在后台线程、45 秒一轮，等得起；
+    原来 8 秒的阈值会让 RapidOCR 在大图上反复被判超时，反而永久关掉了准确率高的那个。
+    """
     global _ocr_q, _ocr_lock, _ocr_thread, _ocr_dead
     if _ocr_dead:
         return ""
@@ -325,7 +408,10 @@ def _have(mod):
 
 
 def ocr_text(hwnd, exe=""):
-    if not _have("PIL") or not _have("winsdk"):
+    # 用 RapidOCR 时不需要 winsdk；只有退回系统 OCR 才需要。
+    # 原来无条件要求 winsdk，装了 RapidOCR 的机器反而被判成"没有 OCR"。
+    need_win = _have("rapidocr") is False or OCR_ENGINE == "windows"
+    if not _have("PIL") or (need_win and not _have("winsdk")):
         return ""
     crop = OCR_CROP_TOP.get((exe or "").lower(), 0)
     try:
@@ -339,18 +425,41 @@ def ocr_text(hwnd, exe=""):
 
 # ---------------------------------------------------------------- 对外
 
-def probe(hwnd, want_ocr=True, exe=""):
-    """返回 {"src","text","ms"}。src 说明这段字是怎么来的，方便判断可靠性。"""
+def probe(hwnd, want_ocr=True, exe="", title=""):
+    """返回 {"src","text","ms"}。src 说明这段字是怎么来的，方便判断可靠性。
+
+    优先级：读文件 > UIA > OCR。
+
+    读文件排最前，因为 OCR 认表格必错字 —— 同一张绩效表，系统 OCR 把
+    「绩效」认成「缋效」、「报价」认成「报佾」，九个常用词只对零个；
+    RapidOCR 好些也只有八成。而 .xlsx/.docx 里存的就是原文，读出来一字不差，
+    还只要 2 毫秒。只有读不到文件（PDF、网页、WPS 私有格式、图片）才退回 OCR。
+    """
     t0 = time.time()
-    text, _items = uia_text(hwnd)
-    src = "uia"
-    # 办公套件对 UIA 基本不配合，能问出来的只有"文档内按F1"这类固定文案，
-    # 真内容全在自绘画布里 —— 这类程序直接走 OCR，别浪费时间问。
-    forced = (exe or "").lower() in OCR_ONLY_EXES
-    if want_ocr and (forced or len(text) < UIA_MIN_GOOD):
-        alt = ocr_text(hwnd, exe=exe)
-        if len(alt) > len(text) or forced:
-            text, src = alt, ("ocr" if not text else "uia+ocr")
+    text, src = "", "none"
+
+    if DOC_READ:
+        doc = doc_reader.read_for_title(title)
+        if doc["text"]:
+            text, src = doc["text"], "file"
+        elif (exe or "").lower() == "explorer.exe":
+            # 资源管理器：标题就是路径，直接列目录，比 OCR 认界面强得多
+            # （OCR 只会读到"文件 主页 共享 查看 剪切 新建项目"这些按钮名）
+            listing = doc_reader.explorer_listing(title)
+            if listing["text"]:
+                text, src = listing["text"], "file"
+
+    if not text:
+        text, _items = uia_text(hwnd)
+        src = "uia"
+        # 办公套件对 UIA 基本不配合，能问出来的只有"文档内按F1"这类固定文案，
+        # 真内容全在自绘画布里 —— 这类程序直接走 OCR，别浪费时间问。
+        forced = (exe or "").lower() in OCR_ONLY_EXES
+        if want_ocr and OCR_ENGINE != "off" and (forced or len(text) < UIA_MIN_GOOD):
+            alt = ocr_text(hwnd, exe=exe)
+            if len(alt) > len(text) or forced:
+                text, src = alt, ("ocr" if not text else "uia+ocr")
+
     text = strip_noise(tidy(text))[:TEXT_CAP]
     return {"src": src if text else "none",
             "text": text,
@@ -365,7 +474,7 @@ if __name__ == "__main__":
     n = user32.GetWindowTextLengthW(h)
     b = ctypes.create_unicode_buffer(n + 1)
     user32.GetWindowTextW(h, b, n + 1)
-    r = probe(h)
+    r = probe(h, title=b.value)
     out = {"title": b.value, **r}
     with open(sys.argv[1] if len(sys.argv) > 1 else "probe_out.json",
               "w", encoding="utf-8") as f:

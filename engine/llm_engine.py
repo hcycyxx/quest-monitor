@@ -42,9 +42,10 @@ def log(msg):
 
 SYSTEM_PROMPT = """你是任务面板分析引擎。用户在你不知道的时候用电脑工作，你每分钟收到一次他最近的窗口活动轨迹，任务是更新他的游戏风格任务面板状态。
 
-轨迹有两种行：
+轨迹有三种行：
 - `20:42:38 [wps.exe] 报价表.xlsx - WPS 表格 · 5分12秒` 表示他在这个窗口待了这么久。
-- 紧跟其后的 `    看到: ...` 是从这个窗口里抓到的实际文字（表格内容、聊天记录、网页正文）。它说明他具体在做什么，比标题精确得多。OCR 抓的可能有错字，别把明显乱码的词当客户名或文件名。
+- 紧跟其后的 `    文档: ...` 是**直接读取该文件**得到的原文（xlsx/docx 内部就是文本），内容准确，客户名、型号、金额都可以直接采信。
+- 紧跟其后的 `    看到: ...` 是从窗口截图里认出来的字（聊天记录、网页、PDF、WPS 私有格式）。它比标题精确，但**认字会出错**：`缋效` 其实是 `绩效`、`报佾` 是 `报价`。别把看起来不像词的片段当成客户名或文件名；能从上下文推断出正确写法的，用正确写法。
 
 规则：
 1. main_quests 主线：今天的主要工作目标。side_quests 支线：中途插入的短任务（如临时搜文件、回消息、整理包材）。
@@ -126,10 +127,12 @@ def read_log_tail(n=10, stall=5.0, scan=400, absorb=180.0, content="light"):
             segments[-1]["idle"] = max(segments[-1]["idle"], float(r.get("idle_s") or 0))
             if content_txt:
                 segments[-1]["content"] = content_txt
+                segments[-1]["src"] = r.get("src") or ""
         else:
             segments.append({"key": key, "start": r["_ts"], "end": r["_ts"],
                              "idle": float(r.get("idle_s") or 0),
-                             "content": content_txt})
+                             "content": content_txt,
+                             "src": (r.get("src") or "") if content_txt else ""})
 
     for i, seg in enumerate(segments):
         # 末段没有"下一条记录"作为终点：用最后一条采样 + 一个心跳周期估算，
@@ -187,7 +190,10 @@ def read_log_tail(n=10, stall=5.0, scan=400, absorb=180.0, content="light"):
             # 窗口里抓到的文字，压成一行跟着。这是"在干什么"的直接证据，
             # 标题只能说"在 WPS 里",这里能说"在改哪个客户的哪一栏"。
             body = " ".join(body.split())[:cap_content]
-            out.append("    看到: " + body)
+            # 标出来源：文档 = 直接读的文件原文（一字不差），看到 = 认字认得（可能错字）。
+            # 模型据此决定要不要相信里面的客户名和数字。
+            head = "    文档: " if seg.get("src") == "file" else "    看到: "
+            out.append(head + body)
     return "\n".join(out)
 
 

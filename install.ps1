@@ -39,9 +39,10 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "[OK] tkinter available"
 
 # --- 2b. optional content-capture deps ------------------------------------
-# comtypes reads the UIA tree, winsdk calls the built-in Windows OCR. Both are
-# local only. Missing packages are NOT fatal: the engine falls back to reading
-# window titles only, which still works.
+# comtypes reads the UIA tree, winsdk calls the built-in Windows OCR, and
+# rapidocr is a much more accurate OCR (3-5s per frame instead of 0.4s, but it
+# does not misread table cells). All are local only. Missing packages are NOT
+# fatal: the engine falls back to reading window titles only.
 $haveDeps = & $py -c "import comtypes, winsdk; print('1')" 2>$null
 if ($LASTEXITCODE -eq 0) {
     Write-Host "[OK] content capture deps present (comtypes, winsdk)"
@@ -55,6 +56,25 @@ if ($LASTEXITCODE -eq 0) {
         Write-Host "[!] could not install comtypes / winsdk." -ForegroundColor Yellow
         Write-Host "    The panel still works, but it will only see window titles."
         Write-Host "    Retry later with: pip install comtypes winsdk"
+    }
+}
+
+# --- 2c. optional accurate OCR --------------------------------------------
+# RapidOCR gets table cells right where the built-in OCR does not. It is a
+# ~100MB download, so a failure here is only a warning: ocr_engine=auto falls
+# back to the built-in OCR.
+$haveRapid = & $py -c "import rapidocr, onnxruntime; print('1')" 2>$null
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "[OK] rapidocr present (accurate OCR)"
+} else {
+    Write-Host "[..] installing rapidocr (accurate OCR, ~100MB)"
+    & $py -m pip install --quiet --disable-pip-version-check rapidocr onnxruntime 2>&1 | Out-Null
+    & $py -c "import rapidocr, onnxruntime" 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[OK] accurate OCR enabled"
+    } else {
+        Write-Host "[!] could not install rapidocr." -ForegroundColor Yellow
+        Write-Host "    Table cells may be misread. Retry: pip install rapidocr onnxruntime"
     }
 }
 
@@ -95,6 +115,9 @@ Write-Host "  interval : $($eff.interval_seconds)s"
 $capOn = "on"
 if ($eff.content_capture -eq $false) { $capOn = "off" }
 Write-Host "  capture  : $capOn (content_level: $($eff.content_level))"
+$docOn = "on"
+if ($eff.doc_read -eq $false) { $docOn = "off" }
+Write-Host "  doc_read : $docOn (ocr_engine: $($eff.ocr_engine))"
 Write-Host ""
 
 if ($eff.api_key -eq "YOUR_API_KEY") {

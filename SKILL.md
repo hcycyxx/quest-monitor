@@ -12,19 +12,22 @@ whenToUse: 用户想在自己的 Windows 机器上运行或重装这个任务面
 ## 装之前确认三件事
 
 1. **Windows 10/11**，`python --version` 是 3.10 以上，安装时勾了 `tcl/tk and IDLE`。
-   面板本身纯标准库；要让它看见窗口里**具体**在做什么，再装两个包：
+   面板本身纯标准库；要让它看见窗口里**具体**在做什么，再装几个包：
 
    ```powershell
-   pip install comtypes winsdk
+   pip install comtypes winsdk rapidocr onnxruntime
    ```
 
-   `comtypes` 读 UIA 控件树，`winsdk` 调 Windows 自带 OCR。装不上也能跑，只是退回只看窗口标题。
+   `comtypes` 读 UIA 控件树；`winsdk` 调 Windows 自带 OCR（兜底）；`rapidocr` 是准确率高
+   得多的 OCR —— 系统 OCR 会把「绩效」认成「缋效」，RapidOCR 不会。装不上也能跑，
+   只是退回只看窗口标题。只装 `comtypes winsdk` 也够用，表格内容会错几个字。
 2. **一个 OpenAI 兼容的 `/v1/chat/completions` 地址**。可以是本机网关（Ollama、LM Studio、
    vLLM、one-api 之类跑在 `http://127.0.0.1:8899/v1`），也可以是云端。
    `install.ps1` 会去探 `/v1/models`，探不通只警告不中断。
 3. **愿意让它记录前台窗口标题和窗口里显示的文字**。它写窗口标题、进程名、空闲秒数、
-   以及 UIA/OCR 抓到的窗口内文字到 `config/win_log.jsonl`。**不截全屏、不上传任何图片**，
+   以及窗口内文字到 `config/win_log.jsonl`。**不截全屏、不上传任何图片**，
    抓到的文字只在本地存，发给模型的只有最后 2~5 段、每段 160~260 字。
+   办公文档是**直接读磁盘上的文件**（xlsx/docx 里存的就是原文），比认字准得多。
    不想抓内容就把 `config\llm.json` 的 `content_capture` 设成 `false`。
 
 ## 安装
@@ -85,19 +88,29 @@ python engine\ctl.py panel      # 只开面板
 `light` 约 815 字、`full` 约 1550 字。关掉面板后引擎会在 20 秒内自己休眠。
 
 **任务名乱** — 模型只看到窗口标题和窗口里显示的字，看不到你改了哪一格、翻到第几页。
-WPS 里 OCR 还有错字（`缋效` `报佾`），提示词里已让它别把乱码当客户名，但命名还是需要手动修。
+WPS 私有格式（`.et`/`.wps`）和 PDF 只能靠 OCR，仍有错字（`缋效` `报佾`），
+提示词里已让它别把乱码当客户名，但命名还是需要手动修。
 
-**抓不到窗口内容** — 先 `pip install comtypes winsdk` 看是否缺包；UIA 对 WPS/Office
-基本无效（只回固定的"文档内按F1"提示），这些程序走 OCR。OCR 若连续 8 秒不返回会被永久
-关闭（防止拖死采样进程），重启引擎可恢复。`config\win_log.jsonl` 里 `src` 字段会写
-`uia` / `ocr` / `uia+ocr`，为空说明这次没抓到。
+**抓不到窗口内容** — 先 `pip install comtypes winsdk rapidocr onnxruntime` 看是否缺包。
+办公文档（xlsx/docx/pptx）是直接读磁盘文件的，不需要 OCR —— 读不到通常是标题里没有
+完整文件名，或者文件不在 `%USERPROFILE%\Microsoft\Windows\Recent` 记录里、也不在
+`doc_reader.SCAN_ROOTS` 列的目录下。UIA 对 WPS/Office 基本无效（只回固定的
+"文档内按F1"提示），这些程序走 OCR。OCR 若连续 25 秒不返回会被永久关闭（防止拖死
+采样进程），重启引擎可恢复。`config\win_log.jsonl` 里 `src` 字段会写
+`file`（读的文档原文，最准）/ `uia` / `ocr` / `uia+ocr`，为空说明这次没抓到。
+
+**表格里的字认错了** — 换 OCR 引擎：`config\llm.json` 的 `ocr_engine` 设成 `rapid`
+（RapidOCR，准但慢 3~5 秒）或 `windows`（系统 OCR，快但表格错字多）。
+更好的办法是让 `doc_read` 保持 `true` —— 能读到文件就完全不经过 OCR。
 
 ## 改它
 
 - `engine/win_watch.py` 采样频率、心跳间隔、自身窗口过滤（`SELF_PREFIXES`）、
   内容抓取节奏（`CONTENT_EVERY` / `CONTENT_IDLE_LIMIT`）
 - `engine/content_probe.py` 抓内容：`OCR_ONLY_EXES`（哪些程序强制走 OCR）、
-  `OCR_CROP_TOP`（切掉顶部 ribbon 的高度）、`NOISE` 词表
+  `OCR_CROP_TOP`（切掉顶部 ribbon 的高度）、`NOISE` 词表、`OCR_ENGINE`（引擎选择）
+- `engine/doc_reader.py` 读文件：`PARSE_EXTS`（哪些格式能直接解析）、
+  `SCAN_ROOTS`（按文件名找文件时扫哪些目录）、`INDEX_TTL`（索引多久重建）
 - `engine/llm_engine.py` 提示词（`SYSTEM_PROMPT`）、轨迹压缩（`read_log_tail`）、
   内容档位（`CONTENT_LEVELS`）
 - `engine/state_store.py` 合并规则：用户操作优先于 AI，`_user_state` 不会被覆盖

@@ -11,13 +11,15 @@
 
 ## 快速开始
 
-需要 Windows 10/11、Python 3.10+（安装时勾上 `tcl/tk and IDLE`）。面板本身只用标准库；要让它看见窗口里**具体**在做什么，还需要两个包（装不上也不影响启动，只是退回只看标题）：
+需要 Windows 10/11、Python 3.10+（安装时勾上 `tcl/tk and IDLE`）。面板本身只用标准库；要让它看见窗口里**具体**在做什么，还需要几个包（装不上也不影响启动，只是退回只看标题）：
 
 ```powershell
-pip install comtypes winsdk
+pip install comtypes winsdk rapidocr onnxruntime
 ```
 
-`comtypes` 用来读 UIA 控件树，`winsdk` 用来调 Windows 自带 OCR。两者都是本地调用，不联网、不上传截图。
+`comtypes` 用来读 UIA 控件树；`winsdk` 用来调 Windows 自带 OCR（兜底）；`rapidocr` + `onnxruntime` 是识别准确率高得多的 OCR（表格里的字基本不会认错，代价是慢十倍）。全部本地调用，不联网、不上传截图。
+
+只想装最轻的一套：`pip install comtypes winsdk` 也能用，只是表格内容会认错几个字。
 
 ```powershell
 git clone https://github.com/hcycyxx/sidequest D:\tools\sidequest
@@ -55,7 +57,8 @@ sidequest/
 ├── restart_all.ps1      # 面板卡住时整条重启，尊重暂停标记
 ├── engine/
 │   ├── win_watch.py     # 窗口看门：前台窗口标题 + 进程名 + 空闲秒数，写 win_log.jsonl
-│   ├── content_probe.py # 内容抓取：UIA 控件树 / 系统 OCR，拿到窗口里正在看的字
+│   ├── content_probe.py # 内容抓取：读文件 / UIA 控件树 / OCR，拿到窗口里正在看的字
+│   ├── doc_reader.py    # 文档解析：标题里的文件名 → 定位磁盘文件 → xlsx/docx/pptx 原文
 │   ├── llm_engine.py    # 主循环：压缩轨迹 → 调模型 → 合并写状态
 │   ├── state_store.py   # 状态层：文件锁、原子写、用户操作与 AI 结果合并
 │   └── ctl.py           # 进程控制：pause / resume / panel / status
@@ -76,15 +79,20 @@ sidequest/
 
 **1. 先看窗口标题，再看窗口里的字，最后才考虑截图**
 
-窗口标题形如 `Offer 261029.xlsx - WPS Office`，纯文本就能推断任务，比截图省几个数量级的 token。光有标题只能知道"在 WPS 里"，所以加了一层**窗口内文字**：
+窗口标题形如 `Offer 261029.xlsx - WPS Office`，纯文本就能推断任务，比截图省几个数量级的 token。光有标题只能知道"在 WPS 里"，所以加了一层**窗口内文字**，按可靠性从高到低取：
 
-| 手段 | 覆盖 | 速度 | 依赖 |
-|---|---|---|---|
-| 窗口标题 | 所有程序 | 2 秒一次，几乎零成本 | 无 |
-| UIA 控件树 | 浏览器、Electron、资源管理器、聊天工具 | 100~400ms | `comtypes` |
-| 系统 OCR | 办公套件（WPS/Office 不配合 UIA） | 约 0.3~1.3 秒 | `winsdk` |
+| 手段 | 覆盖 | 速度 | 准确度 | 依赖 |
+|---|---|---|---|---|
+| 读文件 | 标题里带文件名的 xlsx/xlsm/docx/pptx/xls/csv；资源管理器（标题就是路径） | 2ms | 一字不差 | 无（xls 需 `xlrd`） |
+| UIA 控件树 | 浏览器、Electron、聊天工具 | 100~400ms | 准 | `comtypes` |
+| RapidOCR | 其余一切（PDF、网页、WPS 私有格式、图片） | 3~5 秒 | 9/9 关键词正确 | `rapidocr` |
+| 系统 OCR | 兜底 | 0.3~0.5 秒 | 0/9 关键词正确 | `winsdk` |
 
-两个都是**纯本地**的，不截图发给模型，也不联网。办公套件走 OCR 时会先切掉顶部 150~190px 的 ribbon 功能区——那一片全是"插入 页面布局 公式"这类固定按钮名，OCR 出来全是噪声。
+**为什么读文件排第一**：OCR 认表格必错字。同一张绩效表，系统 OCR 把「绩效」认成「缋效」、「报价」认成「报佾」，九个常用词一个都没对；RapidOCR 好一些，9 个全对。而 `.xlsx`/`.docx` 本身就是 zip 包，里面存的是原文，读出来一个字都不会错，还只要 2 毫秒 —— 快一千多倍。只有读不到文件时才退回 OCR。
+
+RapidOCR 比系统 OCR 准得多但慢十倍（3~5 秒 vs 0.4 秒）。内容抓取本来就在后台线程、45 秒一轮，等得起，所以默认用它。
+
+全部是**纯本地**的，不截图发给模型，也不联网。办公套件走 OCR 时会先切掉顶部 150~190px 的 ribbon 功能区——那一片全是"插入 页面布局 公式"这类固定按钮名，OCR 出来全是噪声。
 
 **2. 轨迹按"专注段"压缩**
 
@@ -123,14 +131,20 @@ python engine\ctl.py panel      # 只开面板
 
 ### 内容抓取开关
 
-`config\llm.json` 里两个字段：
+`config\llm.json` 里四个字段：
 
 ```jsonc
 {
   "content_capture": true,     // false = 完全不抓窗口内容，只记标题
-  "content_level": "light"     // off / light / full，见上面的字符对照表
+  "content_level": "light",    // off / light / full，见上面的字符对照表
+  "doc_read": true,            // false = 不读磁盘上的文档，只走 UIA/OCR
+  "ocr_engine": "auto"         // auto / rapid / windows / off
 }
 ```
+
+`ocr_engine` 说明：`auto`（默认，装了 RapidOCR 就用它，否则用系统 OCR）、`rapid`（强制 RapidOCR，准但慢）、`windows`（强制系统 OCR，快但表格错字多）、`off`（完全不 OCR，只读文件和 UIA —— 最省 CPU）。
+
+`doc_read` 关掉的话就回到"只靠认字"的老路子，表格里的客户名和金额会认错几个字。
 
 改完重启生效：`python engine\ctl.py pause && python engine\ctl.py resume`。
 
@@ -169,7 +183,8 @@ git clone "$env:USERPROFILE\sidequest-backups\sidequest-<rev>.bundle" sidequest
 
 ## 已知限制
 
-- 窗口内文字靠 UIA 和 OCR，WPS 里 OCR 有错字（`缋效` `报佾` 这类），模型会被提示别把乱码当客户名
+- 读文件读到的是**磁盘上的版本**：文档有未保存改动时（标题带 `*`）会比屏幕上的旧一点，"在改哪个客户的哪张表"是准的，具体某一格改成了多少不准
+- 只有标题里带文件名的文档才读得到；PDF、网页、WPS 私有格式（`.et`/`.wps`/`.dps`）、图片只能靠 OCR，仍有错字风险
 - 只知道"这个窗口里显示了这些字"，不知道你改了哪一格、翻到第几页，"这一页写到哪里了"这类进度仍然猜不准
 - 不估算工作量，进度条要么来自显式进度字段，要么来自勾选步骤比例，否则显示"待估算"
 - 任务状态只有 `active` / `pending` / `done`，等待对方回复这类状态暂无

@@ -45,6 +45,22 @@ def content_enabled():
         return True
     return bool(cfg.get("content_capture", True))
 
+
+def content_cfg():
+    """读内容层两个开关：ocr_engine（auto/rapid/windows）、doc_read（读不读文件）。
+    读不到就用默认值，绝不因为配置写错就停掉内容层。"""
+    out = {"ocr_engine": "auto", "doc_read": True}
+    try:
+        with open(CFG, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, ValueError):
+        return out
+    eng = str(cfg.get("ocr_engine", "auto")).lower()
+    if eng in ("auto", "rapid", "windows", "off"):
+        out["ocr_engine"] = eng
+    out["doc_read"] = bool(cfg.get("doc_read", True))
+    return out
+
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
 psapi = ctypes.windll.psapi
@@ -156,7 +172,8 @@ def _probe_worker():
             return
         hwnd, base = item
         try:
-            got = content_probe.probe(hwnd, exe=base.get("exe", ""))
+            got = content_probe.probe(hwnd, exe=base.get("exe", ""),
+                                      title=base.get("title", ""))
         except Exception:
             continue
         text = (got or {}).get("text") or ""
@@ -199,7 +216,10 @@ def write_rec(w, now_mono):
 
 def main():
     capture = content_enabled()
+    ccfg = content_cfg()
     if capture:
+        content_probe.set_ocr_engine(ccfg["ocr_engine"])
+        content_probe.set_doc_read(ccfg["doc_read"])
         threading.Thread(target=_probe_worker, daemon=True).start()
     last = None
     last_write = 0.0
