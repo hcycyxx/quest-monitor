@@ -12,12 +12,20 @@ whenToUse: 用户想在自己的 Windows 机器上运行或重装这个任务面
 ## 装之前确认三件事
 
 1. **Windows 10/11**，`python --version` 是 3.10 以上，安装时勾了 `tcl/tk and IDLE`。
-   纯标准库实现，不需要 pip 装任何东西。
+   面板本身纯标准库；要让它看见窗口里**具体**在做什么，再装两个包：
+
+   ```powershell
+   pip install comtypes winsdk
+   ```
+
+   `comtypes` 读 UIA 控件树，`winsdk` 调 Windows 自带 OCR。装不上也能跑，只是退回只看窗口标题。
 2. **一个 OpenAI 兼容的 `/v1/chat/completions` 地址**。可以是本机网关（Ollama、LM Studio、
    vLLM、one-api 之类跑在 `http://127.0.0.1:8899/v1`），也可以是云端。
    `install.ps1` 会去探 `/v1/models`，探不通只警告不中断。
-3. **愿意让它记录前台窗口标题**。它只写窗口标题、进程名、空闲秒数到
-   `config/win_log.jsonl`，不截图、不读文件内容、不联网上传（除了调你自己配的那个模型接口）。
+3. **愿意让它记录前台窗口标题和窗口里显示的文字**。它写窗口标题、进程名、空闲秒数、
+   以及 UIA/OCR 抓到的窗口内文字到 `config/win_log.jsonl`。**不截全屏、不上传任何图片**，
+   抓到的文字只在本地存，发给模型的只有最后 2~5 段、每段 160~260 字。
+   不想抓内容就把 `config\llm.json` 的 `content_capture` 设成 `false`。
 
 ## 安装
 
@@ -72,16 +80,26 @@ python engine\ctl.py panel      # 只开面板
 **显示"待估算"且一直不更新** — 后台没起来，或模型接口不通。
 看 `engine\engine_run.log`，正常应每 60 秒一行 `状态已更新` 或 `无变化`。
 
-**耗 token 太多** — 把 `config\llm.json` 的 `interval_seconds` 调大（下限 30 秒）。
-单轮输入约 840 token，一小时约 5 万。关掉面板后引擎会在 20 秒内自己休眠。
+**耗 token 太多** — 把 `config\llm.json` 的 `interval_seconds` 调大（下限 30 秒），
+或者把 `content_level` 从 `light` 降到 `off`。单轮输入：`off` 约 480 字、
+`light` 约 815 字、`full` 约 1550 字。关掉面板后引擎会在 20 秒内自己休眠。
 
-**任务名乱** — 模型只看到窗口标题和停留时长，看不到文档内容。"这一页写到哪里了"
-它猜不准，需要手动改或者把文件名起得能说明问题。
+**任务名乱** — 模型只看到窗口标题和窗口里显示的字，看不到你改了哪一格、翻到第几页。
+WPS 里 OCR 还有错字（`缋效` `报佾`），提示词里已让它别把乱码当客户名，但命名还是需要手动修。
+
+**抓不到窗口内容** — 先 `pip install comtypes winsdk` 看是否缺包；UIA 对 WPS/Office
+基本无效（只回固定的"文档内按F1"提示），这些程序走 OCR。OCR 若连续 8 秒不返回会被永久
+关闭（防止拖死采样进程），重启引擎可恢复。`config\win_log.jsonl` 里 `src` 字段会写
+`uia` / `ocr` / `uia+ocr`，为空说明这次没抓到。
 
 ## 改它
 
-- `engine/win_watch.py` 采样频率、心跳间隔、自身窗口过滤（`SELF_PREFIXES`）
-- `engine/llm_engine.py` 提示词（`SYSTEM_PROMPT`）、轨迹压缩（`read_log_tail`）
+- `engine/win_watch.py` 采样频率、心跳间隔、自身窗口过滤（`SELF_PREFIXES`）、
+  内容抓取节奏（`CONTENT_EVERY` / `CONTENT_IDLE_LIMIT`）
+- `engine/content_probe.py` 抓内容：`OCR_ONLY_EXES`（哪些程序强制走 OCR）、
+  `OCR_CROP_TOP`（切掉顶部 ribbon 的高度）、`NOISE` 词表
+- `engine/llm_engine.py` 提示词（`SYSTEM_PROMPT`）、轨迹压缩（`read_log_tail`）、
+  内容档位（`CONTENT_LEVELS`）
 - `engine/state_store.py` 合并规则：用户操作优先于 AI，`_user_state` 不会被覆盖
 - `ui/quest_window.py` 四套皮肤在 `SKINS` 字典，窗口宽 `W=336` 是布局基准
 

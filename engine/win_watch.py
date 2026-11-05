@@ -1,24 +1,49 @@
 # -*- coding: utf-8 -*-
-"""窗口标题看门：记录前台窗口标题 + 进程名到 win_log.jsonl
-零 AI 成本，供任务面板引擎读取活动线索。
+"""窗口看门：记录前台窗口标题 + 进程名 + 窗口内具体内容到 win_log.jsonl
 
-采集策略：
-- 前台窗口变化 → 立刻写一条。
-- 同一窗口持续停留 → 每 HEARTBEAT 秒补一条心跳，这样引擎能算出"停留了多久"，
-  否则一直不动就没有任何采样点，末段停留时长永远是 0。
+两级采集：
+- 标题层（零成本，2 秒一次）：前台窗口变化立刻记一条；同一窗口每 HEARTBEAT 秒补心跳，
+  这样引擎能算出"停留了多久"，否则一直不动就没有采样点，末段停留时长永远是 0。
+- 内容层（0.3~1 秒 CPU，按需）：窗口切换时、以及同一窗口每 CONTENT_EVERY 秒，
+  抓一次"这个窗口里具体在干什么"（UIA 控件/文档正文，必要时退回系统 OCR）。
+  放在后台线程做，不阻塞 2 秒的标题采样；忙不过来就丢帧，绝不排队堆积。
+
+内容只在内存里处理，写进日志的是纯文字，截图不落盘。
 """
-import json
-import time
-import os
 import ctypes
+import json
+import os
+import queue
+import threading
+import time
 from ctypes import wintypes
+
+try:
+    from . import content_probe
+except ImportError:                     # 直接当脚本跑时没有包上下文
+    import content_probe
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG = os.path.join(ROOT, "config", "win_log.jsonl")
-MAX_BYTES = 2 * 1024 * 1024  # 2MB 轮转
+CFG = os.path.join(ROOT, "config", "llm.json")
+MAX_BYTES = 4 * 1024 * 1024  # 4MB 轮转（带内容后单条变长，上限跟着放大）
 KEEP_LINES = 2000
-HEARTBEAT = 60.0             # 同窗口每 60 秒补一条心跳
-TICK = 2.0                   # 轮询间隔
+HEARTBEAT = 60.0             # 同窗口每 60 秒补一条标题心跳
+CONTENT_EVERY = 45.0         # 同窗口每 45 秒重抓一次内容
+TICK = 2.0                   # 标题轮询间隔
+AWAY = 180.0                 # 人离开超过这个秒数就不再补心跳/内容
+CONTENT_IDLE_LIMIT = 90.0    # 人已经闲置这么久就别抓内容了，抓了也是静态画面
+
+
+def content_enabled():
+    """config/llm.json 里 content_capture 为 false 就只记标题，不抓窗口内容。
+    文件不存在/读坏了按开启处理 —— 内容层是主功能，静默关掉更难查。"""
+    try:
+        with open(CFG, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, ValueError):
+        return True
+    return bool(cfg.get("content_capture", True))
 
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
@@ -34,6 +59,8 @@ kernel32.GetTickCount64.restype = ctypes.c_ulonglong
 psapi.GetModuleFileNameExW.argtypes = [
     wintypes.HANDLE, wintypes.HMODULE, wintypes.LPWSTR, wintypes.DWORD]
 psapi.GetModuleFileNameExW.restype = wintypes.DWORD
+
+_log_lock = threading.Lock()
 
 
 def active_window():
@@ -58,7 +85,7 @@ def active_window():
             pass
         finally:
             kernel32.CloseHandle(kh)
-    return {"title": buf.value, "exe": name, "pid": pid.value}
+    return {"hwnd": h, "title": buf.value, "exe": name, "pid": pid.value}
 
 
 SELF_PREFIXES = ("SideQuest", "任务追踪")
@@ -106,18 +133,77 @@ def trim_log():
         pass
 
 
+def append_rec(rec):
+    with _log_lock:
+        try:
+            with open(LOG, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except OSError:
+            return
+        trim_log()
+
+
+# ---------------------------------------------------------------- 内容层线程
+
+_probe_q = queue.Queue(maxsize=1)
+_last_content = {"key": None, "text": None}
+
+
+def _probe_worker():
+    while True:
+        item = _probe_q.get()
+        if item is None:
+            return
+        hwnd, base = item
+        try:
+            got = content_probe.probe(hwnd, exe=base.get("exe", ""))
+        except Exception:
+            continue
+        text = (got or {}).get("text") or ""
+        if not text:
+            continue
+        # 同一窗口同一段文字不重复写，省磁盘也省引擎的 token
+        key = (base["title"], base["exe"])
+        if _last_content["key"] == key and _last_content["text"] == text:
+            continue
+        _last_content["key"] = key
+        _last_content["text"] = text
+        rec = dict(base)
+        rec["content"] = text
+        rec["src"] = got.get("src", "")
+        append_rec(rec)
+
+
+def request_content(w, now_mono):
+    """把一次内容抓取丢给后台线程。队列满就放弃这一帧 —— 内容层是增强，
+    宁可缺一条也不能让标题采样卡住。"""
+    if _probe_q.full():
+        return now_mono
+    try:
+        _probe_q.put_nowait((w["hwnd"], {
+            "t": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "title": w["title"], "exe": w["exe"], "pid": w["pid"],
+            "idle_s": round(idle_seconds(), 1),
+        }))
+    except queue.Full:
+        return now_mono
+    return now_mono
+
+
 def write_rec(w, now_mono):
-    rec = {"t": time.strftime("%Y-%m-%dT%H:%M:%S"),
-           "title": w["title"], "exe": w["exe"], "pid": w["pid"],
-           "idle_s": round(idle_seconds(), 1)}
-    with open(LOG, "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    append_rec({"t": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "title": w["title"], "exe": w["exe"], "pid": w["pid"],
+                "idle_s": round(idle_seconds(), 1)})
     return now_mono
 
 
 def main():
+    capture = content_enabled()
+    if capture:
+        threading.Thread(target=_probe_worker, daemon=True).start()
     last = None
     last_write = 0.0
+    last_content_at = 0.0
     was_idle = False
     while True:
         try:
@@ -128,7 +214,7 @@ def main():
                 idle = idle_seconds()
                 changed = key != last
                 # 人离开 180 秒以上不再补心跳，避免"打开文档去吃饭"被算成专注 3 小时。
-                away = idle >= 180
+                away = idle >= AWAY
                 # 人回到电脑前立刻补一条，否则要等下一个心跳，回来后这段会漏记。
                 back = was_idle and idle < 10
                 was_idle = away
@@ -136,7 +222,14 @@ def main():
                 if changed or stale or back:
                     last = key
                     last_write = write_rec(w, now)
-                    trim_log()
+                    # 换窗口就抓一次内容；同一窗口按 CONTENT_EVERY 重抓，
+                    # 这样"在同一个 Excel 里从填价格切到核包装"也能被看见。
+                    if capture and idle < CONTENT_IDLE_LIMIT:
+                        last_content_at = request_content(w, now)
+                        _last_content["key"] = None      # 新窗口，允许重写同文本
+                elif (capture and idle < CONTENT_IDLE_LIMIT
+                      and (now - last_content_at) >= CONTENT_EVERY):
+                    last_content_at = request_content(w, now)
         except Exception:
             pass
         time.sleep(TICK)

@@ -11,7 +11,13 @@
 
 ## 快速开始
 
-需要 Windows 10/11、Python 3.10+（安装时勾上 `tcl/tk and IDLE`）。纯标准库，不用 pip 装任何东西。
+需要 Windows 10/11、Python 3.10+（安装时勾上 `tcl/tk and IDLE`）。面板本身只用标准库；要让它看见窗口里**具体**在做什么，还需要两个包（装不上也不影响启动，只是退回只看标题）：
+
+```powershell
+pip install comtypes winsdk
+```
+
+`comtypes` 用来读 UIA 控件树，`winsdk` 用来调 Windows 自带 OCR。两者都是本地调用，不联网、不上传截图。
 
 ```powershell
 git clone https://github.com/hcycyxx/sidequest D:\tools\sidequest
@@ -49,6 +55,7 @@ sidequest/
 ├── restart_all.ps1      # 面板卡住时整条重启，尊重暂停标记
 ├── engine/
 │   ├── win_watch.py     # 窗口看门：前台窗口标题 + 进程名 + 空闲秒数，写 win_log.jsonl
+│   ├── content_probe.py # 内容抓取：UIA 控件树 / 系统 OCR，拿到窗口里正在看的字
 │   ├── llm_engine.py    # 主循环：压缩轨迹 → 调模型 → 合并写状态
 │   ├── state_store.py   # 状态层：文件锁、原子写、用户操作与 AI 结果合并
 │   └── ctl.py           # 进程控制：pause / resume / panel / status
@@ -59,21 +66,35 @@ sidequest/
 │   ├── post-commit      # 钩子本体，提交后自动跑 backup.ps1
 │   └── install-hooks.ps1# 把钩子装进 .git/hooks（install.ps1 会自动调）
 └── config/
-    ├── llm.json         # 模型地址、模型名、分析间隔（安装时生成）
+    ├── llm.json         # 模型地址、模型名、分析间隔、内容抓取开关（安装时生成）
     └── quest_state.json # 任务状态（运行时生成）
 ```
 
-一次循环：`win_watch` 每 2 秒采样前台窗口 → `llm_engine` 每 60 秒读最近轨迹、压成"专注段" → 请求 OpenAI 兼容接口 → 拿到 `{changed, state}` → 与磁盘状态合并 → `ui` 每 3 秒刷新。
+一次循环：`win_watch` 每 2 秒采样前台窗口 → 换窗口或每 45 秒调 `content_probe` 抓一次窗口里的文字 → `llm_engine` 每 60 秒读最近轨迹、压成"专注段" → 请求 OpenAI 兼容接口 → 拿到 `{changed, state}` → 与磁盘状态合并 → `ui` 每 3 秒刷新。
 
 ## 三个设计取舍
 
-**1. 先看窗口标题，再看屏幕**
+**1. 先看窗口标题，再看窗口里的字，最后才考虑截图**
 
-窗口标题形如 `Offer 261029.xlsx - WPS Office`，纯文本就能推断任务，比截图省几个数量级的 token。当前版本不截图。
+窗口标题形如 `Offer 261029.xlsx - WPS Office`，纯文本就能推断任务，比截图省几个数量级的 token。光有标题只能知道"在 WPS 里"，所以加了一层**窗口内文字**：
+
+| 手段 | 覆盖 | 速度 | 依赖 |
+|---|---|---|---|
+| 窗口标题 | 所有程序 | 2 秒一次，几乎零成本 | 无 |
+| UIA 控件树 | 浏览器、Electron、资源管理器、聊天工具 | 100~400ms | `comtypes` |
+| 系统 OCR | 办公套件（WPS/Office 不配合 UIA） | 约 0.3~1.3 秒 | `winsdk` |
+
+两个都是**纯本地**的，不截图发给模型，也不联网。办公套件走 OCR 时会先切掉顶部 150~190px 的 ribbon 功能区——那一片全是"插入 页面布局 公式"这类固定按钮名，OCR 出来全是噪声。
 
 **2. 轨迹按"专注段"压缩**
 
-40 条窗口记录直接发过去是 2043 字符；合并连续同窗口、丢弃 <5 秒抖动、给每段算停留时长之后是 438 字符、10 段。实测每轮输入从约 5000 token 降到约 840，每小时约 5 万 token。
+40 条窗口记录直接发过去是 2043 字符；合并连续同窗口、丢弃 <5 秒抖动、给每段算停留时长之后是 438 字符、10 段。加上内容行后实测三档：
+
+| `content_level` | 每轮字符 | 说明 |
+|---|---|---|
+| `off` | 477 | 只有标题，最省 |
+| `light`（默认） | 815 | 最近 2 段各带 160 字内容 |
+| `full` | 1553 | 最近 5 段各带 260 字内容 |
 
 **3. 用户的手动操作不可被 AI 覆盖**
 
@@ -99,6 +120,23 @@ python engine\ctl.py panel      # 只开面板
 暂停会真的杀掉采样与 LLM 两个进程，只留面板本身——因为面板要继续刷新才能显示"已暂停"并让你点继续。暂停状态落盘到 `config\paused`，重启后不会自动恢复消耗。面板关闭时（`config/panel_alive` 心跳停止）引擎会在 20 秒内自动休眠。
 
 `ctl.py` 只认命令行里同时出现脚本名和本项目根目录的进程，同一台机器上装两份不会互相误杀。
+
+### 内容抓取开关
+
+`config\llm.json` 里两个字段：
+
+```jsonc
+{
+  "content_capture": true,     // false = 完全不抓窗口内容，只记标题
+  "content_level": "light"     // off / light / full，见上面的字符对照表
+}
+```
+
+改完重启生效：`python engine\ctl.py pause && python engine\ctl.py resume`。
+
+抓取只在三种情况下发生：换了窗口、同一个窗口停留超过 45 秒、或者人刚回到电脑前。你人离开超过 90 秒就不抓了（抓了也是静态画面），离开超过 180 秒连心跳都不补——否则"打开文档去吃饭"会被算成专注三小时。
+
+抓到的文字只在本地处理，写进 `config\win_log.jsonl`（4MB 轮转，保留最后 2000 行），发给模型的只有最后 2~5 段、每段 160~260 字。想彻底不留痕就设 `"content_capture": false`。
 
 ## 本地版本备份
 
@@ -131,7 +169,8 @@ git clone "$env:USERPROFILE\sidequest-backups\sidequest-<rev>.bundle" sidequest
 
 ## 已知限制
 
-- 只靠窗口标题和停留时长推断，读不到文档内容，"这一页写到哪里了"这类进度猜不准
+- 窗口内文字靠 UIA 和 OCR，WPS 里 OCR 有错字（`缋效` `报佾` 这类），模型会被提示别把乱码当客户名
+- 只知道"这个窗口里显示了这些字"，不知道你改了哪一格、翻到第几页，"这一页写到哪里了"这类进度仍然猜不准
 - 不估算工作量，进度条要么来自显式进度字段，要么来自勾选步骤比例，否则显示"待估算"
 - 任务状态只有 `active` / `pending` / `done`，等待对方回复这类状态暂无
 - 模型判断有主观性，任务被拆得不对时需要手动改

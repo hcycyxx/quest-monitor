@@ -15,6 +15,14 @@ CFG = os.path.join(ROOT, "config", "llm.json")
 LOG = os.path.join(ROOT, "config", "win_log.jsonl")
 STATE = os.path.join(ROOT, "config", "quest_state.json")
 ALIVE = os.path.join(ROOT, "config", "panel_alive")
+
+# 窗口内容带给模型的档位。内容比标题贵得多（每段几百字 vs 标题 40 字），
+# 所以按档位限制"带几段、每段多少字"，让用户自己在 llm.json 里选。
+CONTENT_LEVELS = {
+    "off":   (0, 0),        # 完全不带，只吃标题
+    "light": (2, 160),      # 默认：最近 2 段各 160 字
+    "full":  (5, 260),      # 最近 5 段各 260 字
+}
 ENGINE_LOG = os.path.join(ROOT, "engine", "engine_run.log")
 
 
@@ -32,16 +40,21 @@ def log(msg):
     except OSError:
         pass
 
-SYSTEM_PROMPT = """你是任务面板分析引擎。用户在你不知道的时候用电脑工作，你每分钟收到一次他最近的窗口活动轨迹（前台窗口标题+时间），任务是更新他的游戏风格任务面板状态。
+SYSTEM_PROMPT = """你是任务面板分析引擎。用户在你不知道的时候用电脑工作，你每分钟收到一次他最近的窗口活动轨迹，任务是更新他的游戏风格任务面板状态。
+
+轨迹有两种行：
+- `20:42:38 [wps.exe] 报价表.xlsx - WPS 表格 · 5分12秒` 表示他在这个窗口待了这么久。
+- 紧跟其后的 `    看到: ...` 是从这个窗口里抓到的实际文字（表格内容、聊天记录、网页正文）。它说明他具体在做什么，比标题精确得多。OCR 抓的可能有错字，别把明显乱码的词当客户名或文件名。
 
 规则：
 1. main_quests 主线：今天的主要工作目标。side_quests 支线：中途插入的短任务（如临时搜文件、回消息、整理包材）。
-2. status 取值 active/pending/done。steps 是可勾选步骤。progress 简短如"2/3"或"草拟中"。note 记录判断依据（窗口标题+时间）。
-3. current_activity：一句话描述他现在在干嘛（从最新窗口标题推断，格式如"文档名 - 应用"要翻译成人话）。
+2. status 取值 active/pending/done。steps 是可勾选步骤。progress 简短如"2/3"或"草拟中"。note 记录判断依据（窗口标题+时间，或看到了什么）。
+3. current_activity：一句话描述他现在在干嘛。要具体到内容，不要只说应用名：写"在改 KYNKO 报价表的单价栏"，不要写"在用 WPS"。
 4. suggestion：一句话建议（下一步做什么、是否跑偏、支线该收尾回主线了）。
 5. 幂等节俭：与上次状态相比无实质变化时，输出 {"changed": false} 即可，不要重新生成全部内容。
-6. 从窗口标题推断任务时要具体（文件名、客户名都保留）。看到新文档/新客户名可自动建支线或更新主线。
-7. 只输出 JSON，不要 markdown 代码块，不要解释。
+6. 从轨迹推断任务时要具体（文件名、客户名、单据号都保留）。看到新文档/新客户名可自动建支线或更新主线。
+7. 看到的内容里如果有明确的业务动作（收到订单、客户问价、要发货），那是新支线的信号，别当成噪声。
+8. 只输出 JSON，不要 markdown 代码块，不要解释。
 
 输出格式：
 {"changed": true/false, "state": {"main_quests":[{"id":"M1","title":"...","status":"active","progress":"...","note":"...","steps":[{"text":"...","done":false}]}], "side_quests":[同结构], "current_activity":"...", "suggestion":"...", "updated_at":"ISO时间"}}
@@ -77,12 +90,14 @@ def _clean_title(title, exe):
     return t or "(\u684c\u9762)"
 
 
-def read_log_tail(n=10, stall=5.0, scan=400, absorb=180.0):
+def read_log_tail(n=10, stall=5.0, scan=400, absorb=180.0, content="light"):
     """把窗口轨迹压成"专注段"：合并重复标题、算停留时长、丢掉 stall 秒内的抖动。
 
-    返回形如 "20:42:38 [chrome.exe] WhatsApp 聊天 · 2分36秒" 的多行文本。
+    返回形如 "20:42:38 [chrome.exe] WhatsApp 聊天 · 2分36秒" 的多行文本，
+    段下面若有窗口内文字（UIA/OCR 抓到的），缩进跟一行「看到：…」。
     喂给模型的不再是 40 条原始采样，而是真正有语义的几次"做了什么"。
     """
+    n_content, cap_content = CONTENT_LEVELS.get(content, CONTENT_LEVELS["light"])
     try:
         with open(LOG, "r", encoding="utf-8") as f:
             lines = f.readlines()[-scan:]
@@ -105,12 +120,16 @@ def read_log_tail(n=10, stall=5.0, scan=400, absorb=180.0):
     segments = []
     for r in recs:
         key = (r.get("exe", "?"), r.get("title", "") or "")
+        content_txt = r.get("content") or ""
         if segments and segments[-1]["key"] == key:
             segments[-1]["end"] = r["_ts"]
             segments[-1]["idle"] = max(segments[-1]["idle"], float(r.get("idle_s") or 0))
+            if content_txt:
+                segments[-1]["content"] = content_txt
         else:
             segments.append({"key": key, "start": r["_ts"], "end": r["_ts"],
-                             "idle": float(r.get("idle_s") or 0)})
+                             "idle": float(r.get("idle_s") or 0),
+                             "content": content_txt})
 
     for i, seg in enumerate(segments):
         # 末段没有"下一条记录"作为终点：用最后一条采样 + 一个心跳周期估算，
@@ -150,6 +169,10 @@ def read_log_tail(n=10, stall=5.0, scan=400, absorb=180.0):
     kept = merged[-n:]
 
     out = []
+    with_content = [s for s in kept if (s.get("content") or "").strip()]
+    # 只给最近 n_content 段配内容，早先的段只留标题：越旧的内容越没用，
+    # 而且一整屏 OCR 文本几百字，全带上光输入就上万 token。
+    allow = {id(s) for s in with_content[-n_content:]} if n_content else set()
     for seg in kept:
         exe, title = seg["key"]
         stamp = time.strftime("%H:%M:%S", time.localtime(seg["start"]))
@@ -159,6 +182,12 @@ def read_log_tail(n=10, stall=5.0, scan=400, absorb=180.0):
         span = "%d\u5206%d\u79d2" % (d // 60, d % 60) if d >= 60 else "%d\u79d2" % d
         idle = " \u00b7 \u79bb\u5f00%d\u79d2" % int(seg["idle"]) if seg["idle"] >= 120 else ""
         out.append("%s [%s] %s \u00b7 %s%s" % (stamp, exe, _clean_title(title, exe), span, idle))
+        body = (seg.get("content") or "").strip()
+        if body and id(seg) in allow:
+            # 窗口里抓到的文字，压成一行跟着。这是"在干什么"的直接证据，
+            # 标题只能说"在 WPS 里",这里能说"在改哪个客户的哪一栏"。
+            body = " ".join(body.split())[:cap_content]
+            out.append("    看到: " + body)
     return "\n".join(out)
 
 
@@ -361,7 +390,8 @@ def main_loop():
             log("面板已恢复 → 继续分析")
             idle_noted = False
         try:
-            log_text = read_log_tail()
+            level = str(cfg.get("content_level", "light")).lower()
+            log_text = read_log_tail(content=level)
             prev = load_json(STATE, {})
             user_msg = (
                 f"当前时间: {time.strftime('%Y-%m-%dT%H:%M:%S')}\n"

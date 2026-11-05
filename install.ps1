@@ -38,6 +38,26 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[OK] tkinter available"
 
+# --- 2b. optional content-capture deps ------------------------------------
+# comtypes reads the UIA tree, winsdk calls the built-in Windows OCR. Both are
+# local only. Missing packages are NOT fatal: the engine falls back to reading
+# window titles only, which still works.
+$haveDeps = & $py -c "import comtypes, winsdk; print('1')" 2>$null
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "[OK] content capture deps present (comtypes, winsdk)"
+} else {
+    Write-Host "[..] installing content capture deps (comtypes, winsdk)"
+    & $py -m pip install --quiet --disable-pip-version-check comtypes winsdk 2>&1 | Out-Null
+    & $py -c "import comtypes, winsdk" 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[OK] content capture enabled"
+    } else {
+        Write-Host "[!] could not install comtypes / winsdk." -ForegroundColor Yellow
+        Write-Host "    The panel still works, but it will only see window titles."
+        Write-Host "    Retry later with: pip install comtypes winsdk"
+    }
+}
+
 # --- 3. config -------------------------------------------------------------
 $cfgDir = Join-Path $root "config"
 if (-not (Test-Path $cfgDir)) { New-Item -ItemType Directory -Path $cfgDir | Out-Null }
@@ -72,6 +92,9 @@ $keyShown = $eff.api_key
 if ($keyShown -and $keyShown.Length -gt 8) { $keyShown = $keyShown.Substring(0, 4) + "..." }
 Write-Host "  api_key  : $keyShown"
 Write-Host "  interval : $($eff.interval_seconds)s"
+$capOn = "on"
+if ($eff.content_capture -eq $false) { $capOn = "off" }
+Write-Host "  capture  : $capOn (content_level: $($eff.content_level))"
 Write-Host ""
 
 if ($eff.api_key -eq "YOUR_API_KEY") {

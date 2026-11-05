@@ -2,5 +2,7 @@
   "base_url": "http://127.0.0.1:8899/v1",
   "api_key": "YOUR_API_KEY",
   "model": "deepseek-v4.1-flash",
-  "interval_seconds": 60
+  "interval_seconds": 60,
+  "content_capture": true,
+  "content_level": "light"
 }
