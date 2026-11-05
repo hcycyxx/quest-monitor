@@ -9,12 +9,13 @@ import time
 from datetime import datetime
 import urllib.request
 import state_store as store
+import paths
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CFG = os.path.join(ROOT, "config", "llm.json")
-LOG = os.path.join(ROOT, "config", "win_log.jsonl")
-STATE = os.path.join(ROOT, "config", "quest_state.json")
-ALIVE = os.path.join(ROOT, "config", "panel_alive")
+ROOT = paths.PROGRAM_DIR
+CFG = paths.config("llm.json")
+LOG = paths.config("win_log.jsonl")
+STATE = paths.config("quest_state.json")
+ALIVE = paths.config("panel_alive")
 
 # 窗口内容带给模型的档位。内容比标题贵得多（每段几百字 vs 标题 40 字），
 # 所以按档位限制"带几段、每段多少字"，让用户自己在 llm.json 里选。
@@ -23,13 +24,14 @@ CONTENT_LEVELS = {
     "light": (2, 160),      # 默认：最近 2 段各 160 字
     "full":  (5, 260),      # 最近 5 段各 260 字
 }
-ENGINE_LOG = os.path.join(ROOT, "engine", "engine_run.log")
+ENGINE_LOG = paths.runtime_log("engine_run.log")
 
 
 def log(msg):
     line = f"[engine] {time.strftime('%H:%M:%S')} {msg}"
     print(line, flush=True)
     try:
+        paths.ensure_parent(ENGINE_LOG)
         if os.path.exists(ENGINE_LOG) and os.path.getsize(ENGINE_LOG) > 1_000_000:
             with open(ENGINE_LOG, "r", encoding="utf-8", errors="replace") as f:
                 keep = f.readlines()[-800:]

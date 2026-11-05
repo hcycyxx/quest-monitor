@@ -14,10 +14,10 @@
 需要 Windows 10/11、Python 3.10+（安装时勾上 `tcl/tk and IDLE`）。面板本身只用标准库；要让它看见窗口里**具体**在做什么，还需要几个包（装不上也不影响启动，只是退回只看标题）：
 
 ```powershell
-pip install comtypes winsdk rapidocr onnxruntime
+pip install comtypes winsdk rapidocr onnxruntime pystray
 ```
 
-`comtypes` 用来读 UIA 控件树；`winsdk` 用来调 Windows 自带 OCR（兜底）；`rapidocr` + `onnxruntime` 是识别准确率高得多的 OCR（表格里的字基本不会认错，代价是慢十倍）。全部本地调用，不联网、不上传截图。
+`comtypes` 用来读 UIA 控件树；`winsdk` 用来调 Windows 自带 OCR（兜底）；`rapidocr` + `onnxruntime` 是识别准确率高得多的 OCR（表格里的字基本不会认错，代价是慢十倍）；`pystray` 提供托盘图标（装不上就只是没有托盘，面板照常跑）。全部本地调用，不联网、不上传截图。
 
 只想装最轻的一套：`pip install comtypes winsdk` 也能用，只是表格内容会认错几个字。
 
@@ -53,18 +53,29 @@ git clone https://github.com/hcycyxx/sidequest "$env:USERPROFILE\.agents\skills\
 ```
 sidequest/
 ├── SKILL.md             # DSH 技能入口（装成技能时才用）
+├── sidequest.py         # 打包入口：--panel / --worker / --summary
+├── build.spec           # PyInstaller 打包描述
+├── installer.iss        # Inno Setup 安装脚本（生成 Setup.exe）
 ├── install.ps1          # 一键安装：查环境、写配置、拉起服务
 ├── restart_all.ps1      # 面板卡住时整条重启，尊重暂停标记
 ├── engine/
+│   ├── paths.py         # 路径分流：源码跑在项目里，打包后数据落 %LOCALAPPDATA%
 │   ├── win_watch.py     # 窗口看门：前台窗口标题 + 进程名 + 空闲秒数，写 win_log.jsonl
 │   ├── content_probe.py # 内容抓取：读文件 / UIA 控件树 / OCR，拿到窗口里正在看的字
 │   ├── doc_reader.py    # 文档解析：标题里的文件名 → 定位磁盘文件 → xlsx/docx/pptx 原文
 │   ├── llm_engine.py    # 主循环：压缩轨迹 → 调模型 → 合并写状态
 │   ├── state_store.py   # 状态层：文件锁、原子写、用户操作与 AI 结果合并
+│   ├── daily_summary.py # 每日总结：收集状态与轨迹 → 问模型明天做什么 → 写 HTML
+│   ├── summary_html.py  # 手账风格 HTML 渲染（纯函数，只依赖标准库）
 │   └── ctl.py           # 进程控制：pause / resume / panel / status
 ├── ui/
-│   └── quest_window.py  # tkinter 悬浮窗（四皮肤、贴边把手、进度环、时间轴）
+│   ├── quest_window.py  # tkinter 悬浮窗（四皮肤、贴边把手、进度环、时间轴、托盘接线）
+│   ├── tray.py          # 托盘图标与右键菜单（pystray，动作走队列回主线程）
+│   └── settings_window.py # 详细设置窗口：模型 API、字体大小、内容开关、总结时间
+├── assets/
+│   └── sidequest.ico    # 托盘与安装包图标（tools/make_icon.py 生成）
 ├── tools/
+│   ├── make_icon.py     # 画图标，七个尺寸
 │   ├── backup.ps1       # 本地版本备份：裸仓库 + bundle + 任务状态快照
 │   ├── post-commit      # 钩子本体，提交后自动跑 backup.ps1
 │   └── install-hooks.ps1# 把钩子装进 .git/hooks（install.ps1 会自动调）
@@ -112,9 +123,45 @@ RapidOCR 比系统 OCR 准得多但慢十倍（3~5 秒 vs 0.4 秒）。内容抓
 
 - 默认折叠：进度环 + 当前行动 + 主线名
 - 点开：主线/支线任务、每项进度条、可展开的步骤、下一步建议、已完成时间轴、今日回顾
-- 顶栏整条可拖动，五个按钮：皮肤（深蓝玻璃 / 轻透悬浮 / 杂志手账 / 夜航 HUD）、暂停、图钉、收起、关闭，悬停有说明
+- 顶栏整条可拖动，六个按钮：皮肤（深蓝玻璃 / 轻透悬浮 / 杂志手账 / 夜航 HUD）、暂停、总在最前、图钉、收起、关闭，悬停有说明
 - 拖到边缘松手后鼠标移开自动缩成竖把手，移回展开，图钉可固定
 - 任务左侧圆点 = 完成/恢复；标题区 = 展开步骤（分开是为了避免点标题时误标完成）
+- 进度条颜色跟紧急程度走：红 = 高（客户在等、有金额和交期）、琥珀 = 中、灰蓝 = 低、青色 = 等对方回话。颜色挑的是"红黄灰青"这条最符合直觉的语义，不用紫绿这类需要记住含义的色
+- 顶部「当前行动」超过两行会折起来，点右边的箭头看完整描述
+- 半透明时背景透、文字不透明（文字画在另一个点击穿透的窗口上）
+
+## 托盘与每日总结
+
+右下角托盘有个 SideQuest 图标，右键：
+
+| 菜单项 | 作用 |
+|---|---|
+| 打开今日总结 | 打开 `summaries\YYYY-MM-DD.html`，今天还没生成就先生成 |
+| 历史总结 | 子菜单列出最近 12 天，点哪天看哪天 |
+| 显示 / 隐藏面板 | 隐藏只收起窗口，采样和 AI 分析继续跑 |
+| 立即生成总结 | 手动生成今天的，生成完自动打开 |
+| 详细设置… | 模型 API、字体大小、内容抓取开关、总结时间 |
+| 退出 SideQuest | 面板 + 采样 + 引擎一起停 |
+
+每天 18:00（可在详细设置里改）自动生成一份手账风格的 HTML，内容四块：**今日完成**（带完成时刻和步骤勾选情况）、**还在进行中**（按优先级排，带进度和下一步）、**明天优先做**（问一次模型，接口不通就按优先级兜底）、**今日时间轴**（完成/新建/重开按时间排）+ 专注时长统计。
+
+「明天优先做」和正文的一句话建议都要调一次模型，所以生成会花几秒；接口不可用时整份总结照样出，只是这两块退化成规则排序。
+
+## 打包成 exe 一键安装
+
+```powershell
+python tools\make_icon.py                      # 图标（已生成可跳过）
+python -m PyInstaller --noconfirm build.spec   # 产出 dist\SideQuest.exe
+ISCC.exe installer.iss                         # 产出 dist\SideQuest-Setup-1.1.0.exe
+```
+
+`ISCC.exe` 在 Inno Setup 安装目录（`winget install --id JRSoftware.InnoSetup` 装，通常在 `%LOCALAPPDATA%\Programs\Inno Setup 6`）。
+
+装完是单文件 exe，装到 `%LOCALAPPDATA%\Programs\SideQuest`，**不需要管理员权限**。配置、任务状态、日志、每日总结都在 `%LOCALAPPDATA%\SideQuest\`（可用环境变量 `SIDEQUEST_HOME` 改到别处）。卸载时会问要不要连这些数据一起删，默认不删。
+
+安装选项里可以勾"开机启动"，也可以自己把快捷方式丢进 `shell:startup`。**不能用 Windows 服务**——服务跑在 session 0，画不出悬浮窗也弹不出托盘图标。
+
+打包版和源码版的差别只在路径：源码跑在项目目录里，打包版把数据写到用户目录（程序目录在安装位置，只读）。
 
 ## 控制与开销
 

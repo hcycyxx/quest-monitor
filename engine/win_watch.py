@@ -23,9 +23,11 @@ try:
 except ImportError:                     # 直接当脚本跑时没有包上下文
     import content_probe
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LOG = os.path.join(ROOT, "config", "win_log.jsonl")
-CFG = os.path.join(ROOT, "config", "llm.json")
+import paths
+
+ROOT = paths.PROGRAM_DIR
+LOG = paths.config("win_log.jsonl")
+CFG = paths.config("llm.json")
 MAX_BYTES = 4 * 1024 * 1024  # 4MB 轮转（带内容后单条变长，上限跟着放大）
 KEEP_LINES = 2000
 HEARTBEAT = 60.0             # 同窗口每 60 秒补一条标题心跳
@@ -152,6 +154,7 @@ def trim_log():
 def append_rec(rec):
     with _log_lock:
         try:
+            paths.ensure_parent(LOG)
             with open(LOG, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         except OSError:

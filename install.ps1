@@ -78,6 +78,25 @@ if ($LASTEXITCODE -eq 0) {
     }
 }
 
+# --- 2d. optional tray icon -----------------------------------------------
+# pystray gives the tray icon that opens the daily summary. Without it the
+# panel still runs; you just lose the tray menu.
+$haveTray = & $py -c "import pystray; print('1')" 2>$null
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "[OK] pystray present (tray icon)"
+} else {
+    Write-Host "[..] installing pystray (tray icon)"
+    & $py -m pip install --quiet --disable-pip-version-check pystray 2>&1 | Out-Null
+    & $py -c "import pystray" 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[OK] tray icon enabled"
+    } else {
+        Write-Host "[!] could not install pystray." -ForegroundColor Yellow
+        Write-Host "    The panel still works; the daily summary is only reachable from disk."
+        Write-Host "    Retry later with: pip install pystray"
+    }
+}
+
 # --- 3. config -------------------------------------------------------------
 $cfgDir = Join-Path $root "config"
 if (-not (Test-Path $cfgDir)) { New-Item -ItemType Directory -Path $cfgDir | Out-Null }
@@ -176,8 +195,10 @@ Write-Host "Status:" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Panel should now sit at the top-right corner." -ForegroundColor Cyan
 Write-Host "  - click the title bar to drag it"
-Write-Host "  - top bar buttons: skin / pause / pin / collapse / close"
+Write-Host "  - top bar buttons: skin / pause / always-on-top / pin / collapse / close"
 Write-Host "  - pause really kills the samplers, so it stops costing tokens"
+Write-Host "  - tray icon (bottom right): daily summary, history, settings, quit"
 Write-Host ""
 Write-Host "Logs: engine\engine_run.log"
+Write-Host "Daily summary: summaries\YYYY-MM-DD.html (auto at 18:00)"
 Write-Host "Stop: python engine\ctl.py pause"

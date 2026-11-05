@@ -11,15 +11,24 @@ import subprocess
 import sys
 import time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PAUSE_FLAG = os.path.join(ROOT, "config", "paused")
-PIDFILE = os.path.join(ROOT, "config", "workers.json")
+import paths
+
+ROOT = paths.PROGRAM_DIR
+PAUSE_FLAG = paths.config("paused")
+PIDFILE = paths.config("workers.json")
 
 WORKERS = {
     "win_watch": os.path.join(ROOT, "engine", "win_watch.py"),
     "llm_engine": os.path.join(ROOT, "engine", "llm_engine.py"),
 }
 PANEL = os.path.join(ROOT, "ui", "quest_window.py")
+
+
+def _spawn_args(name):
+    """打包后没有 .py 文件可指，只能让 exe 自己带参数重启一份子进程。"""
+    if paths.is_frozen():
+        return [sys.executable, "--worker", name]
+    return [sys.executable, WORKERS[name]]
 
 CREATE_NO_WINDOW = 0x08000000
 STILL_ACTIVE = 259
@@ -102,39 +111,49 @@ def _norm(text):
     return (text or "").replace("/", "\\").lower()
 
 
+def _proc_names():
+    """要扫哪些进程名。源码运行是 python.exe，打包后是自己这个 exe。"""
+    if paths.is_frozen():
+        return [os.path.basename(sys.executable)]
+    return ["python.exe", "pythonw.exe"]
+
+
 def _discover(name):
-    """按命令行找已经在跑、但不在 pid 记录里的同名脚本进程。
+    """按命令行找已经在跑、但不在 pid 记录里的同名进程。
 
     必须同时匹配脚本名和本项目的根目录：同一台机器上可能有第二份
     sidequest（测试副本或另一个安装），只按脚本名匹配会误杀别人的进程。
     """
-    try:
-        out = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-Command",
-             "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
-             "Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"],
-            capture_output=True, text=True, timeout=15,
-            creationflags=CREATE_NO_WINDOW,
-        )
-        raw = (out.stdout or "").strip()
-        if not raw:
-            return []
-        data = json.loads(raw)
-        if isinstance(data, dict):
-            data = [data]
-        root_key = _norm(ROOT)
-        hits = []
+    hits = []
+    root_key = _norm(ROOT)
+    for exe_name in _proc_names():
+        try:
+            out = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-Command",
+                 "Get-CimInstance Win32_Process -Filter \"Name='%s'\" | "
+                 "Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress" % exe_name],
+                capture_output=True, text=True, timeout=15,
+                creationflags=CREATE_NO_WINDOW,
+            )
+            raw = (out.stdout or "").strip()
+            if not raw:
+                continue
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                data = [data]
+        except Exception:
+            continue
         for item in data:
             cmd = _norm(item.get("CommandLine") or "")
             if name not in cmd or root_key not in cmd:
                 continue
             try:
-                hits.append(int(item.get("ProcessId")))
+                pid = int(item.get("ProcessId"))
             except (TypeError, ValueError):
-                pass
-        return hits
-    except Exception:
-        return []
+                continue
+            if pid != os.getpid() and pid not in hits:
+                hits.append(pid)
+    return hits
 
 
 def status():
@@ -180,13 +199,13 @@ def start_workers():
     set_paused(False)
     pids = _load_pids()
     started = {}
-    for name, script in WORKERS.items():
+    for name in WORKERS:
         if _pid_alive(pids.get(name)):
             started[name] = pids[name]
             continue
         try:
             p = subprocess.Popen(
-                [sys.executable, script],
+                _spawn_args(name),
                 cwd=ROOT,
                 creationflags=CREATE_NO_WINDOW,
                 stdout=subprocess.DEVNULL,
@@ -213,13 +232,20 @@ def start_panel():
     if _discover("quest_window"):
         return None
     try:
+        log = paths.runtime_log("panel_error.log")
+        paths.ensure_parent(log)
+        # 面板的 stdout/stderr 一定要落盘：它是无窗口启动的，崩了没人看得见，
+        # 只能靠这个文件排查（托盘/依赖导入失败都写在这里）。
+        sink = open(log, "a", encoding="utf-8", errors="replace")
+        args = [sys.executable, "--panel"] if paths.is_frozen() else [sys.executable, PANEL]
         p = subprocess.Popen(
-            [sys.executable, PANEL],
+            args,
             cwd=ROOT,
             creationflags=CREATE_NO_WINDOW,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=sink,
+            stderr=sink,
         )
+        sink.close()
         return p.pid
     except Exception:
         return None

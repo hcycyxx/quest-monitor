@@ -32,3 +32,19 @@ desktop.ini
 .DS_Store
 design_shots/
 config/ui.json
+
+# 打包产物与打包测试残留
+build/
+dist/
+*.spec.bak
+build_log.txt
+_installtest/
+_tmp/
+_home/
+_install.log
+
+# 每日总结（含真实工作内容）
+summaries/
+
+_smoke_out.txt
+_smoke_err.txt

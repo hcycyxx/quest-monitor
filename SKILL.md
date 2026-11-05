@@ -15,12 +15,13 @@ whenToUse: 用户想在自己的 Windows 机器上运行或重装这个任务面
    面板本身纯标准库；要让它看见窗口里**具体**在做什么，再装几个包：
 
    ```powershell
-   pip install comtypes winsdk rapidocr onnxruntime
+   pip install comtypes winsdk rapidocr onnxruntime pystray
    ```
 
    `comtypes` 读 UIA 控件树；`winsdk` 调 Windows 自带 OCR（兜底）；`rapidocr` 是准确率高
-   得多的 OCR —— 系统 OCR 会把「绩效」认成「缋效」，RapidOCR 不会。装不上也能跑，
-   只是退回只看窗口标题。只装 `comtypes winsdk` 也够用，表格内容会错几个字。
+   得多的 OCR —— 系统 OCR 会把「绩效」认成「缋效」，RapidOCR 不会；`pystray` 给托盘图标
+   （缺了只是没托盘，面板照常跑）。装不上也能跑，只是退回只看窗口标题。只装
+   `comtypes winsdk` 也够用，表格内容会错几个字。
 2. **一个 OpenAI 兼容的 `/v1/chat/completions` 地址**。可以是本机网关（Ollama、LM Studio、
    vLLM、one-api 之类跑在 `http://127.0.0.1:8899/v1`），也可以是云端。
    `install.ps1` 会去探 `/v1/models`，探不通只警告不中断。
@@ -70,10 +71,36 @@ python engine\ctl.py panel      # 只开面板
 ## 面板怎么用
 
 - 顶栏整条都能拖（不只是标题文字）
-- 顶栏五个按钮：换皮肤 / 暂停 / 图钉 / 收起 / 关闭，鼠标停在上面有说明
+- 顶栏六个按钮：换皮肤 / 暂停 / 总在最前 / 图钉 / 收起 / 关闭，鼠标停在上面有说明
 - 任务左边圆点 = 标记完成或恢复；点标题 = 展开步骤。分开是为了避免点标题时误标完成
 - 拖到屏幕边缘松手，鼠标移开 0.75 秒会缩成竖把手，图钉可固定成常驻展开
 - 暂停时标题变金色、进度环变暗，显示的是冻结快照，直到点 ▶
+- 进度条颜色 = 紧急程度：红 high / 琥珀 mid / 灰蓝 low / 青 waiting
+
+## 托盘与每日总结
+
+右下角托盘图标，右键六个入口：打开今日总结、历史总结（最近 12 天）、显示/隐藏面板、
+立即生成总结、详细设置…、退出 SideQuest。
+
+每天 18:00（详细设置里可改）自动生成 `summaries\YYYY-MM-DD.html`，手账风格：
+今日完成、还在进行中、明天优先做、今日时间轴，加专注时长统计。
+「明天优先做」要调一次模型，接口不通就按优先级兜底，总结照样出。
+
+详细设置窗口能改：模型接口地址 / API Key / 模型名 / 分析间隔、内容抓取开关
+（`content_capture` / `doc_read` / `content_level` / `ocr_engine`）、悬浮窗字体大小、
+每日总结生成时间。改完立即生效，不用重启。
+
+## 装成 exe（不想装 Python 的机器）
+
+```powershell
+python -m PyInstaller --noconfirm build.spec   # → dist\SideQuest.exe
+ISCC.exe installer.iss                         # → dist\SideQuest-Setup-1.1.0.exe
+```
+
+安装包不需要管理员权限，装到 `%LOCALAPPDATA%\Programs\SideQuest`；
+配置、任务、日志、总结都在 `%LOCALAPPDATA%\SideQuest\`（`SIDEQUEST_HOME` 可改）。
+卸载时会问要不要连数据一起删，默认不删。**不要试图装成 Windows 服务**——
+服务在 session 0，画不出悬浮窗、也弹不出托盘图标。
 
 ## 排障
 
@@ -114,6 +141,17 @@ WPS 私有格式（`.et`/`.wps`）和 PDF 只能靠 OCR，仍有错字（`缋效
 **顶部「当前行动」被截断成「中途…」** — 默认两行，超过两行时右侧出现小箭头，
 点一下展开完整描述，再点收起。
 
+**托盘图标不见了** — 先确认 `pip install pystray` 装上了（缺了面板照常跑，只是没托盘）；
+Windows 的托盘会把不常用的图标收进「^」里，点开看看。面板关掉后图标还在，
+右键可以重新打开面板或者退出整个程序。
+
+**今天没有自动生成总结** — 到点那一刻面板必须在跑（它负责触发），
+且当天没生成过。手动补：托盘右键「立即生成总结」。
+生成失败看 `logs\panel_error.log`（打包版）或 `engine\engine_run.log`（源码版）。
+
+**总结里「明天优先做」是空的或者很敷衍** — 那块要调一次模型，
+接口不通就退化成按 priority 排序。检查 `config\llm.json` 的接口地址和模型名。
+
 ## 改它
 
 - `engine/win_watch.py` 采样频率、心跳间隔、自身窗口过滤（`SELF_PREFIXES`）、
@@ -126,7 +164,12 @@ WPS 私有格式（`.et`/`.wps`）和 PDF 只能靠 OCR，仍有错字（`缋效
   内容档位（`CONTENT_LEVELS`）
 - `engine/state_store.py` 合并规则：用户操作优先于 AI，`_user_state` 不会被覆盖；
   `merge_ai_state` 里 `reopen` 分支控制模型能否把已完成的任务改回 active
-- `ui/quest_window.py` 四套皮肤在 `SKINS` 字典，窗口宽 `W=336` 是布局基准；
-  排序在 `_priority_rank`，头部高度在 `_header_height`
+- `engine/daily_summary.py` 总结内容：`FOCUS_IDLE` / `FOCUS_CAP`（专注时长怎么算）、
+  `MAX_TOMORROW`（明天列几条）、`auto_due`（几点触发）
+- `engine/summary_html.py` 手账样式：配色在 CSS 变量里，纸底 `#f6f0e2`
+- `engine/paths.py` 数据放哪：`SIDEQUEST_HOME` 环境变量优先，打包后默认 `%LOCALAPPDATA%\SideQuest`
+- `ui/quest_window.py` 四套皮肤在 `SKINS` 字典（含 `prio_*` 四色），窗口宽 `W=336`
+  是布局基准；排序在 `_priority_rank`，头部高度在 `_header_height`，字体在 `_font_size`
+- `ui/tray.py` 菜单项、`ui/settings_window.py` 设置项字段
 
 改完 `python engine\ctl.py pause` 再 `resume` 让引擎重载，界面改动要 `.\restart_all.ps1`。

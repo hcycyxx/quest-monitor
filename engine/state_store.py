@@ -193,6 +193,9 @@ def merge_ai_state(proposal, latest, max_active=8):
                         if previous_steps.get(str(s.get('text', '')).strip()):
                             s['done'] = True
                 q.pop('reopen', None)
+                # 模型不会回传 created_at，得从旧状态接上，否则时间轴每天都会重记一次
+                if prior.get('created_at') and not q.get('created_at'):
+                    q['created_at'] = prior['created_at']
                 if q.get('status') == 'done':
                     for field in ('completed_at', 'completedAt', 'done_at'):
                         if prior.get(field):
@@ -205,6 +208,10 @@ def merge_ai_state(proposal, latest, max_active=8):
                     for field in ('completed_at', 'completedAt', 'done_at'):
                         q.pop(field, None)
             q.pop('reopen', None)
+            # 每日总结要用「这条任务什么时候第一次出现」画时间轴。只在新任务上写，
+            # 老任务不补（补了也是假时间），缺失时总结那边按「时间未知」处理。
+            if prior is None:
+                q.setdefault('created_at', now())
             output.append(q)
         # The model's abbreviated response is never an instruction to delete history
         # or a task that the user has explicitly edited.

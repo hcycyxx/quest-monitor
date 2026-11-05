@@ -15,12 +15,14 @@ import tkinter.font as tkfont
 from datetime import datetime, timezone, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-STATE_FILE = os.path.join(ROOT, "config", "quest_state.json")
-ALIVE_FILE = os.path.join(ROOT, "config", "panel_alive")
-UI_FILE = os.path.join(ROOT, "config", "ui.json")
-
 sys.path.insert(0, os.path.join(ROOT, "engine"))
+
+import paths
+
+STATE_FILE = paths.config("quest_state.json")
+ALIVE_FILE = paths.config("panel_alive")
+UI_FILE = paths.config("ui.json")
+
 try:
     import ctl as svc
 except Exception:                      # 控制模块缺失时面板照常显示，按钮退化为无操作
@@ -77,6 +79,12 @@ GOLD_DIM = "#bca66b"
 CYAN = "#7de3f4"
 GREEN = "#5be3a2"
 RED = "#ff8080"
+# 进度条按紧急程度上色：红=马上要、橙=今天做、灰蓝=有空再做、青=在等别人。
+# 这组色是深色皮肤的默认值，换皮肤时由 SKINS 里各自的 prio_* 覆盖。
+PRIO_HIGH = "#ff6f5e"
+PRIO_MID = "#ffb454"
+PRIO_LOW = "#6f8fa6"
+PRIO_WAIT = "#7de3f4"
 TRANSPARENT = "#010203"
 # 透明度下限 0.35：再低就既看不清也点不到，等于把面板弄丢在桌面上。
 ALPHA_MIN = 0.35
@@ -104,10 +112,14 @@ F_MICRO = F_SMALL
 W = 336
 TZ = timezone(timedelta(hours=8))
 SKINS = {
-    "glass": {"name":"深蓝玻璃", "bg":"#14171f", "hi":"#232a38", "text":"#f1f5fc", "muted":"#a8b7cc", "gold":"#ffd166", "cyan":"#7de3f4", "green":"#5be3a2", "alpha":1., "radius":16, "family":"Microsoft YaHei UI", "brand":"SideQuest"},
-    "transparent": {"name":"轻透悬浮", "bg":"#182330", "hi":"#2b3c4e", "text":"#ffffff", "muted":"#cfdaea", "gold":"#ffe1a0", "cyan":"#b3efff", "green":"#92efc3", "alpha":.90, "radius":16, "family":"Microsoft YaHei UI", "brand":"SideQuest"},
-    "journal": {"name":"杂志手账", "bg":"#f4efe3", "hi":"#eae1ce", "text":"#342e29", "muted":"#6b6054", "gold":"#96623b", "cyan":"#396c73", "green":"#3c7052", "alpha":1., "radius":7, "family":"SimSun", "brand":"SideQuest"},
-    "night": {"name":"夜航 HUD", "bg":"#101b25", "hi":"#1c2e3c", "text":"#edf8ff", "muted":"#abc4d6", "gold":"#8ae8ff", "cyan":"#c0b3ff", "green":"#68edb8", "alpha":1., "radius":6, "family":"Microsoft YaHei UI", "brand":"SideQuest"},
+    "glass": {"name":"深蓝玻璃", "bg":"#14171f", "hi":"#232a38", "text":"#f1f5fc", "muted":"#a8b7cc", "gold":"#ffd166", "cyan":"#7de3f4", "green":"#5be3a2", "alpha":1., "radius":16, "family":"Microsoft YaHei UI", "brand":"SideQuest",
+              "prio_high":"#ff6f5e", "prio_mid":"#ffb454", "prio_low":"#6f8fa6", "prio_wait":"#7de3f4"},
+    "transparent": {"name":"轻透悬浮", "bg":"#182330", "hi":"#2b3c4e", "text":"#ffffff", "muted":"#cfdaea", "gold":"#ffe1a0", "cyan":"#b3efff", "green":"#92efc3", "alpha":.90, "radius":16, "family":"Microsoft YaHei UI", "brand":"SideQuest",
+              "prio_high":"#ff8577", "prio_mid":"#ffc670", "prio_low":"#8fa9bd", "prio_wait":"#b3efff"},
+    "journal": {"name":"杂志手账", "bg":"#f4efe3", "hi":"#eae1ce", "text":"#342e29", "muted":"#6b6054", "gold":"#96623b", "cyan":"#396c73", "green":"#3c7052", "alpha":1., "radius":7, "family":"SimSun", "brand":"SideQuest",
+              "prio_high":"#b23b28", "prio_mid":"#a9761c", "prio_low":"#5f7f8c", "prio_wait":"#396c73"},
+    "night": {"name":"夜航 HUD", "bg":"#101b25", "hi":"#1c2e3c", "text":"#edf8ff", "muted":"#abc4d6", "gold":"#8ae8ff", "cyan":"#c0b3ff", "green":"#68edb8", "alpha":1., "radius":6, "family":"Microsoft YaHei UI", "brand":"SideQuest",
+              "prio_high":"#ff7a6a", "prio_mid":"#ffc266", "prio_low":"#7f9fb5", "prio_wait":"#c0b3ff"},
 }
 
 
@@ -236,11 +248,23 @@ class QuestHUD(tk.Tk):
         self._alpha = self._clamp_alpha(saved.get("alpha", SKINS[self._skin_key]["alpha"]))
         # 总在最前：默认开。有些全屏程序会抢走 z 序，tick 里会定期抢回来。
         self._topmost = bool(saved.get("topmost", True))
+        # 字体大小存在 ui.json 的 font_size，托盘设置里可调，改完立刻生效
+        try:
+            self._font_size = max(8, min(16, int(saved.get("font_size", 10) or 10)))
+        except (TypeError, ValueError):
+            self._font_size = 10
+        self._summary_hour = saved.get("summary_hour", 18)
         self._settings = None
         self._settings_body = None
         self._settings_open = False
         self._pct_label = None
         self._slider = None
+        # 托盘与详细设置窗口
+        self._tray = None
+        self._detail = None
+        self._summary_busy = False
+        self._summary_at = 0.
+        self._note = None
         try:
             self.attributes("-alpha", self._alpha)
             self.attributes("-topmost", self._topmost)
@@ -254,9 +278,12 @@ class QuestHUD(tk.Tk):
         self._ov_stamp = 0.
         self._make_overlay()
         self.bind("<Configure>", self._place_overlay, add="+")
-        self._fonts = {"title": tkfont.Font(self, font=F_TITLE),
-                       "body": tkfont.Font(self, font=F_BODY),
-                       "small": tkfont.Font(self, font=F_SMALL)}
+        self._fonts = {"title": tkfont.Font(self, family=SKINS[self._skin_key]["family"],
+                                            size=self._font_size + 0, weight="bold"),
+                       "body": tkfont.Font(self, family=SKINS[self._skin_key]["family"],
+                                           size=self._font_size),
+                       "small": tkfont.Font(self, family=SKINS[self._skin_key]["family"],
+                                            size=max(7, self._font_size - 2))}
         self._line = max(21, self._fonts["body"].metrics("linespace") / self._ui_scale + 3)
         self._small_line = max(17, self._fonts["small"].metrics("linespace") / self._ui_scale + 2)
         self.body = DesignCanvas(self, bg=TRANSPARENT, highlightthickness=0, bd=0)
@@ -269,6 +296,7 @@ class QuestHUD(tk.Tk):
         self.bind("<Leave>", self._leave, add="+")
         self.bind("<Escape>", self._escape)
         self.bind("<space>", lambda e: self._reveal_edge(True) if self._edge_hidden else None)
+        self._start_tray()
         self.render()
         self.after(3000, self.tick)
 
@@ -304,6 +332,20 @@ class QuestHUD(tk.Tk):
             self._schedule_edge()
             self.render()
 
+    def _toggle_panel_visible(self):
+        """托盘里的「显示 / 隐藏面板」。隐藏只收起窗口，进程和引擎继续跑。"""
+        try:
+            if self.state() == "withdrawn":
+                self.deiconify()
+                self.lift()
+                self.render()
+            else:
+                self._close_settings()
+                self._hide_tip()
+                self.withdraw()
+        except tk.TclError:
+            pass
+
     def _toggle(self, e=None):
         if self._guard_reveal(e):
             return
@@ -328,6 +370,12 @@ class QuestHUD(tk.Tk):
             os.remove(ALIVE_FILE)
         except OSError:
             pass
+        if self._tray is not None:
+            try:
+                self._tray.stop()
+            except Exception:
+                pass
+            self._tray = None
         self.destroy()
 
     def _minimize(self, e=None):
@@ -419,6 +467,7 @@ class QuestHUD(tk.Tk):
             except Exception:
                 pass
         self._raise_topmost()
+        self._summary_tick()
         self.after(3000, self.tick)
 
     def _hide_tip(self, e=None):
@@ -686,6 +735,10 @@ class QuestHUD(tk.Tk):
         return label
 
     def _activity_text(self, s):
+        # 托盘操作的结果（比如"总结没生成出来"）优先显示两秒，
+        # 否则用户点完菜单什么反馈都没有，会以为点了没反应。
+        if self._note:
+            return self._note
         act = str(s.get("current_activity") or "暂无当前行动")
         # 括号里的文件名对判断没帮助，还占掉半行
         act = re.sub(r"[（(][a-zA-Z0-9_.\-]+\.(?:exe|py|txt|xlsx?|docx?|pdf)[）)]", "", act).strip()
@@ -763,7 +816,7 @@ class QuestHUD(tk.Tk):
             "pin": ("固定：贴边后不自动缩成把手" if not self._edge_pinned else "取消贴边固定")
                    if self._dock_side else "把面板拖到屏幕边缘后，这里可以固定成常驻展开",
             "minus": "收起成一条窄条",
-            "close": "关闭面板（后台服务仍在运行）",
+            "close": "关闭面板（托盘图标还在，右键可重新打开）",
         }
         for tag, text in hints.items():
             cv.tag_bind(tag, "<Enter>", lambda e, t=text: self._show_tip(t, e), add="+")
@@ -860,6 +913,19 @@ class QuestHUD(tk.Tk):
         # 稳定排序：同优先级保持模型给的原始顺序，不因每轮刷新而跳动
         return sorted(quests, key=self._priority_rank)
 
+    @staticmethod
+    def _prio_color(q):
+        """进度条颜色 = 紧急程度。红要马上做、橙是今天的、灰蓝是有空再说、
+        青是在等别人（不是你能推进的，所以不催）。"""
+        if q.get("status") == "waiting":
+            return PRIO_WAIT
+        prio = str(q.get("priority") or "").lower()
+        if prio == "high":
+            return PRIO_HIGH
+        if prio == "low":
+            return PRIO_LOW
+        return PRIO_MID
+
     def _section(self, quests, label, color, key, readonly=False):
         cv = self.list
         y = self._draw_y
@@ -926,10 +992,11 @@ class QuestHUD(tk.Tk):
         y += h + 7
         frac, label, source = self._measure_progress(q)
         self._text(cv,17,y,self._live_line(q),W-145,"small",SUB,1)
-        cv.create_text(W-31,y,anchor="ne",text=label,font=self._fonts["small"],fill=SUB)
+        cv.create_text(W-31,y,anchor="ne",text=label,font=self._fonts["small"],
+                       fill=self._prio_color(q) if q.get("status") != "done" else SUB)
         y += self._small_line + 6
         waiting = q.get("status") == "waiting"
-        self._draw_progress(cv,q,uid,17,y,W-48,CYAN if waiting else color)
+        self._draw_progress(cv,q,uid,17,y,W-48,self._prio_color(q))
         y += 15
         if waiting:
             y += self._text(cv,17,y,"等待回复 · 进度暂停",W-60,"small",CYAN)+4
@@ -1274,12 +1341,15 @@ class QuestHUD(tk.Tk):
 
     def _set_skin(self,key):
         global GLASS_BG,GLASS_HI,STROKE,WHITE,SUB,FAINT,GOLD,GOLD_DIM,CYAN,GREEN,F_SMALL
+        global PRIO_HIGH,PRIO_MID,PRIO_LOW,PRIO_WAIT
         skin = SKINS[key]
         self._skin_key = key
         self._skin_choice.set(key)
         GLASS_BG,GLASS_HI = skin["bg"],skin["hi"]
         WHITE,SUB,FAINT = skin["text"],skin["muted"],skin["muted"]
         GOLD,CYAN,GREEN = skin["gold"],skin["cyan"],skin["green"]
+        PRIO_HIGH,PRIO_MID = skin["prio_high"],skin["prio_mid"]
+        PRIO_LOW,PRIO_WAIT = skin["prio_low"],skin["prio_wait"]
         STROKE,GOLD_DIM = mix(GLASS_BG,SUB,.4),GOLD
         F_SMALL = (skin["family"],8)
         for font in self._fonts.values():
@@ -1747,6 +1817,194 @@ class QuestHUD(tk.Tk):
                 self._ov_visible = True
         except tk.TclError:
             self._ov, self._ov_cv, self._ov_visible = None, None, False
+
+    # ------------------------------------------------------------ 托盘与总结
+
+    def _start_tray(self):
+        """托盘图标是关闭面板后还能找回它的唯一入口，所以尽量起来。"""
+        try:
+            import tray as tray_mod
+        except Exception:
+            return
+        try:
+            self._tray = tray_mod.Tray({})
+            if self._tray.start():
+                self._refresh_tray_history()
+            else:
+                self._tray = None
+        except Exception:
+            self._tray = None
+        if self._tray is not None:
+            self.after(400, self._tray_poll)
+
+    def _refresh_tray_history(self):
+        if self._tray is None:
+            return
+        try:
+            import daily_summary as ds
+            self._tray.set_history(ds.history())
+        except Exception:
+            pass
+
+    def _tray_poll(self):
+        """pystray 在自己的线程里，只能把动作名塞队列，主线程在这里取。"""
+        if self._tray is None:
+            return
+        try:
+            action = self._tray.poll()
+        except Exception:
+            action = None
+        if action:
+            try:
+                self._tray_action(action)
+            except Exception:
+                pass
+        self.after(400, self._tray_poll)
+
+    def _tray_action(self, action):
+        if action == "summary":
+            self._open_summary()
+        elif action.startswith("summary:"):
+            self._open_summary(action.split(":", 1)[1])
+        elif action == "generate":
+            self._generate_summary(open_after=True)
+        elif action == "settings":
+            self._open_detail_settings()
+        elif action == "panel":
+            self._toggle_panel_visible()
+        elif action == "quit":
+            self._quit_all()
+
+    def _open_summary(self, date=None):
+        """没指定日期就打开今天；今天还没生成过就先生成再打开。"""
+        try:
+            import daily_summary as ds
+        except Exception:
+            return
+        try:
+            if date:
+                path = os.path.join(ds.OUT, "%s.html" % date)
+                if not os.path.exists(path):
+                    path = ds.build(ds.datetime.strptime(date, "%Y-%m-%d").date(),
+                                    use_llm=False)
+            else:
+                path = os.path.join(ds.OUT, "%s.html" % ds.datetime.now(ds.TZ).date())
+                if not os.path.exists(path):
+                    path = self._generate_summary(open_after=False)
+            if path and os.path.exists(path):
+                os.startfile(path)
+        except Exception:
+            pass
+
+    def _generate_summary(self, open_after=False):
+        """生成会问一次模型，可能要几秒；放后台线程，别卡住面板。"""
+        if self._summary_busy:
+            return None
+        self._summary_busy = True
+        result = {}
+
+        def run():
+            try:
+                import daily_summary as ds
+                path = ds.build()
+                result["path"] = path
+                ds.mark_auto(ds.datetime.now(ds.TZ).date())
+            except Exception as exc:
+                result["error"] = str(exc)
+            finally:
+                self._summary_busy = False
+
+        import threading
+        threading.Thread(target=run, daemon=True).start()
+
+        def wait(n=0):
+            if self._summary_busy and n < 120:
+                self.after(250, lambda: wait(n + 1))
+                return
+            path = result.get("path")
+            self._refresh_tray_history()
+            if not path:
+                self._flash_note("总结没生成出来，看 logs 里的报错")
+                return
+            if open_after and os.path.exists(path):
+                try:
+                    os.startfile(path)
+                except OSError:
+                    pass
+        self.after(250, wait)
+        return result.get("path")
+
+    def _flash_note(self, text):
+        """在顶栏当前行动位置闪一句提示，2 秒后自动回到正常内容。
+
+        不弹窗：托盘操作经常是顺手点的，弹窗要额外点一次才能关掉。
+        """
+        try:
+            self._note = text
+            self.render()
+            self.after(2200, self._clear_note)
+        except tk.TclError:
+            pass
+
+    def _clear_note(self):
+        self._note = None
+        try:
+            self.render()
+        except tk.TclError:
+            pass
+
+    def _summary_tick(self):
+        """到点自动生成。每天只生成一次，靠 summaries/.auto-<date> 记。"""
+        try:
+            import daily_summary as ds
+            hour = int(self._summary_hour or 18)
+            day = ds.auto_due(hour)
+            if day and not self._summary_busy:
+                self._generate_summary(open_after=False)
+                ds.mark_auto(day)
+                self._refresh_tray_history()
+        except Exception:
+            pass
+
+    def _open_detail_settings(self):
+        try:
+            import settings_window as sw
+        except Exception:
+            return
+        if self._detail is not None:
+            try:
+                if self._detail.top.winfo_exists():
+                    self._detail.focus()
+                    return
+            except tk.TclError:
+                pass
+            self._detail = None
+        pal = sw.palette_from(SKINS[self._skin_key])
+        self._detail = sw.SettingsWindow(self, pal, on_saved=self._apply_detail)
+
+    def _apply_detail(self, llm, ui):
+        """设置保存后立刻生效：字体大小和皮肤不用重启。"""
+        size = ui.get("font_size")
+        if isinstance(size, int) and size != self._font_size:
+            self._font_size = max(8, min(16, size))
+            for key, font in self._fonts.items():
+                font.configure(size=self._font_size if key != "small"
+                               else max(7, self._font_size - 2))
+            self._line = max(21, self._fonts["body"].metrics("linespace") / self._ui_scale + 3)
+            self._small_line = max(17, self._fonts["small"].metrics("linespace") / self._ui_scale + 2)
+            self.render()
+        hour = ui.get("summary_hour")
+        if isinstance(hour, int):
+            self._summary_hour = hour
+
+    def _quit_all(self):
+        """托盘退出 = 面板和后台引擎一起停，否则进程会留在后台没人看得见。"""
+        if svc is not None:
+            try:
+                svc.stop_workers()
+            except Exception:
+                pass
+        self._close(None)
 
     def _card_click(self,e):
         if e.x < W-95:
