@@ -225,17 +225,66 @@ def call_llm(cfg, user_msg, retries=2):
     raise last_err
 
 
+def _balanced_objects(text):
+    """按括号配对切出所有顶层 {...}，跳过字符串里的花括号。
+
+    模型偶尔会吐 `{"changed":true,...}{"note":"..."}` 这种尾巴，或者把
+    示例 JSON 和真答案接在一起。用 rfind("}") 取最大区间会把两段粘在
+    一起，json.loads 报 Extra data。这里逐段切，让调用方自己挑。
+    """
+    out = []
+    depth = 0
+    start = -1
+    in_str = False
+    esc = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    out.append(text[start:i + 1])
+                    start = -1
+    return out
+
+
 def parse_llm_json(text):
     t = text.strip()
     if t.startswith("```"):
         t = t.split("\n", 1)[1] if "\n" in t else t
         t = t.rsplit("```", 1)[0]
     t = t.strip()
-    start = t.find("{")
-    end = t.rfind("}")
-    if start >= 0 and end > start:
-        return json.loads(t[start:end + 1])
-    raise ValueError("no json in llm output")
+    candidates = _balanced_objects(t)
+    if not candidates:
+        raise ValueError("no json in llm output")
+    # 有多段时优先挑带 changed/state 的那一段：那才是协议里的答案，
+    # 别的可能是模型顺手举例或者解释用的片段。
+    for blob in candidates:
+        try:
+            data = json.loads(blob)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict) and ("changed" in data or "state" in data):
+            return data
+    for blob in candidates:
+        try:
+            return json.loads(blob)
+        except json.JSONDecodeError:
+            continue
+    raise ValueError("no parsable json in llm output")
 
 
 def panel_alive(max_age=20):
