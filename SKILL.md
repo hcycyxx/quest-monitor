@@ -92,10 +92,18 @@ python engine\ctl.py panel      # 只开面板
 
 ## 装成 exe（不想装 Python 的机器）
 
+不想装 Python 就直接下安装包：
+<https://github.com/hcycyxx/sidequest/releases/latest>（约 100 MB，含 OCR 模型）。
+
+自己编译：
+
 ```powershell
-python -m PyInstaller --noconfirm build.spec   # → dist\SideQuest.exe
+python -m PyInstaller --noconfirm build.spec   # → dist\SideQuest\ 目录
 ISCC.exe installer.iss                         # → dist\SideQuest-Setup-1.1.0.exe
 ```
+
+产物是目录形式（`SideQuest.exe` + `_internal\`），不是单文件：整包 300 MB，
+单文件模式每次启动都要解压到临时目录，冷启动十几秒，临时目录不可写时直接起不来。
 
 安装包不需要管理员权限，装到 `%LOCALAPPDATA%\Programs\SideQuest`；
 配置、任务、日志、总结都在 `%LOCALAPPDATA%\SideQuest\`（`SIDEQUEST_HOME` 可改）。

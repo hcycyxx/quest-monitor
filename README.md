@@ -149,15 +149,21 @@ RapidOCR 比系统 OCR 准得多但慢十倍（3~5 秒 vs 0.4 秒）。内容抓
 
 ## 打包成 exe 一键安装
 
+不想装 Python，直接下安装包：**[SideQuest-Setup-1.1.0.exe](https://github.com/hcycyxx/sidequest/releases/latest)**（约 100 MB，含 OCR 模型）。
+
+自己编译：
+
 ```powershell
 python tools\make_icon.py                      # 图标（已生成可跳过）
-python -m PyInstaller --noconfirm build.spec   # 产出 dist\SideQuest.exe
+python -m PyInstaller --noconfirm build.spec   # 产出 dist\SideQuest\ 目录
 ISCC.exe installer.iss                         # 产出 dist\SideQuest-Setup-1.1.0.exe
 ```
 
 `ISCC.exe` 在 Inno Setup 安装目录（`winget install --id JRSoftware.InnoSetup` 装，通常在 `%LOCALAPPDATA%\Programs\Inno Setup 6`）。
 
-装完是单文件 exe，装到 `%LOCALAPPDATA%\Programs\SideQuest`，**不需要管理员权限**。配置、任务状态、日志、每日总结都在 `%LOCALAPPDATA%\SideQuest\`（可用环境变量 `SIDEQUEST_HOME` 改到别处）。卸载时会问要不要连这些数据一起删，默认不删。
+产物是**目录形式**（`dist\SideQuest\SideQuest.exe` + `_internal\`），不是单文件。原因很实在：整包 300 MB（RapidOCR 的模型和 onnxruntime 占大头），单文件模式每次启动都要把这 300 MB 解压到临时目录，冷启动要十几秒，而且临时目录不可写时会直接起不来。目录形式只在安装时解压一次。
+
+装到 `%LOCALAPPDATA%\Programs\SideQuest`，**不需要管理员权限**。配置、任务状态、日志、每日总结都在 `%LOCALAPPDATA%\SideQuest\`（可用环境变量 `SIDEQUEST_HOME` 改到别处），首次启动会从安装包里播种一份默认配置。卸载时会问要不要连这些数据一起删，默认不删。
 
 安装选项里可以勾"开机启动"，也可以自己把快捷方式丢进 `shell:startup`。**不能用 Windows 服务**——服务跑在 session 0，画不出悬浮窗也弹不出托盘图标。
 
