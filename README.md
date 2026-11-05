@@ -55,6 +55,10 @@ sidequest/
 │   └── ctl.py           # 进程控制：pause / resume / panel / status
 ├── ui/
 │   └── quest_window.py  # tkinter 悬浮窗（四皮肤、贴边把手、进度环、时间轴）
+├── tools/
+│   ├── backup.ps1       # 本地版本备份：裸仓库 + bundle + 任务状态快照
+│   ├── post-commit      # 钩子本体，提交后自动跑 backup.ps1
+│   └── install-hooks.ps1# 把钩子装进 .git/hooks（install.ps1 会自动调）
 └── config/
     ├── llm.json         # 模型地址、模型名、分析间隔（安装时生成）
     └── quest_state.json # 任务状态（运行时生成）
@@ -96,6 +100,35 @@ python engine\ctl.py panel      # 只开面板
 暂停会真的杀掉采样与 LLM 两个进程，只留面板本身——因为面板要继续刷新才能显示"已暂停"并让你点继续。暂停状态落盘到 `config\paused`，重启后不会自动恢复消耗。面板关闭时（`config/panel_alive` 心跳停止）引擎会在 20 秒内自动休眠。
 
 `ctl.py` 只认命令行里同时出现脚本名和本项目根目录的进程，同一台机器上装两份不会互相误杀。
+
+## 本地版本备份
+
+代码在 GitHub 上有一份，但工作区可能被别的东西清掉（磁盘清理工具、自动更新都可能）。所以每次提交都会在工作区**之外**再留一份：
+
+```
+%USERPROFILE%\sidequest-archive.git     裸仓库，含全部分支与 tag
+%USERPROFILE%\sidequest-backups\        sidequest-<rev>.bundle + state-<时间>-<rev>.json
+```
+
+bundle 是单文件，离线就能 `git clone` 出来；`state-*.json` 是任务状态快照——这个文件在 `.gitignore` 里，但它是整个项目最值钱的数据。
+
+手动备份一次：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\backup.ps1
+```
+
+钩子装在 `.git/hooks/post-commit`，而那个目录不归 git 管，所以换了新克隆要重装一次（`install.ps1` 会自动装）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\install-hooks.ps1
+```
+
+从备份恢复：
+
+```powershell
+git clone "$env:USERPROFILE\sidequest-backups\sidequest-<rev>.bundle" sidequest
+```
 
 ## 已知限制
 
