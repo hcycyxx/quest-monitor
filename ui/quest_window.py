@@ -1464,20 +1464,29 @@ class QuestHUD(tk.Tk):
 
     @staticmethod
     def _set_click_through(win):
-        """WS_EX_LAYERED|WS_EX_TRANSPARENT|WS_EX_NOACTIVATE：看得见，点得到下面的窗口。"""
+        """WS_EX_LAYERED|WS_EX_TRANSPARENT|WS_EX_NOACTIVATE：看得见，点得到下面的窗口。
+
+        Tk 的 Toplevel 有两层 HWND（wrapper + 内容窗口），样式加在哪一层都不算稳，
+        所以两层都加一遍。加失败也不致命，只是点击会落到文字层上。
+        """
         if os.name != "nt":
             return
         import ctypes
         GWL_EXSTYLE = -20
         WS_EX_LAYERED, WS_EX_TRANSPARENT, WS_EX_NOACTIVATE = 0x80000, 0x20, 0x8000000
         u = ctypes.windll.user32
-        hwnd = u.GetParent(win.winfo_id()) or win.winfo_id()
-        try:
-            style = u.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            u.SetWindowLongW(hwnd, GWL_EXSTYLE,
-                             style | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
-        except (AttributeError, OSError):
-            pass
+        inner = win.winfo_id()
+        handles = [inner]
+        parent = u.GetParent(inner)
+        if parent:
+            handles.append(parent)
+        for hwnd in handles:
+            try:
+                style = u.GetWindowLongW(hwnd, GWL_EXSTYLE)
+                u.SetWindowLongW(hwnd, GWL_EXSTYLE,
+                                 style | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE)
+            except (AttributeError, OSError):
+                pass
 
     def _place_overlay(self, e=None):
         ov = self._ov
@@ -1501,6 +1510,8 @@ class QuestHUD(tk.Tk):
         try:
             ov.geometry(f"{max(1,w)}x{max(1,h)}+{x}+{y}")
             ov.deiconify()
+            # deiconify 之后样式可能被重置，重新压一遍穿透
+            self._set_click_through(ov)
             ov.lift()
             self._ov_visible = True
         except tk.TclError:
