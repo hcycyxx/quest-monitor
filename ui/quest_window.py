@@ -293,6 +293,8 @@ class QuestHUD(tk.Tk):
         self.list.configure(yscrollcommand=self._scroll_changed)
         self._list_window = None
         self.list.bind("<MouseWheel>", self._wheel)
+        self._wheel_hook = None
+        self._start_wheel_hook()
         self.bind("<Enter>", self._enter, add="+")
         self.bind("<Leave>", self._leave, add="+")
         self.bind("<Escape>", self._escape)
@@ -300,6 +302,7 @@ class QuestHUD(tk.Tk):
         self._start_tray()
         self.render()
         self.after(3000, self.tick)
+        self.after(60, self._wheel_tick)
 
     def _drag_start(self, e):
         self._cancel_edge()
@@ -361,6 +364,12 @@ class QuestHUD(tk.Tk):
             if job:
                 self.after_cancel(job)
         self._hide_tip()
+        if self._wheel_hook is not None:
+            try:
+                self._wheel_hook.stop()
+            except Exception:
+                pass
+            self._wheel_hook = None
         if self._ov is not None:
             try:
                 self._ov.destroy()
@@ -512,6 +521,44 @@ class QuestHUD(tk.Tk):
         self._summary_tick()
         self.after(3000, self.tick)
 
+    def _wheel_tick(self):
+        """取走滚轮钩子攒下的增量。钩子在线程里，这里只在主线程碰画布。
+
+        单独跑一个 60ms 的快拍：挂在 3 秒的 tick 上，滚一下要等三秒才动，
+        手感就是"滚不动"。
+        """
+        hook = getattr(self, "_wheel_hook", None)
+        if hook is not None and hook.ok:
+            try:
+                self._wheel_hook.set_rect(
+                    (self.winfo_rootx(), self.winfo_rooty(),
+                     self.winfo_rootx() + self.winfo_width(),
+                     self.winfo_rooty() + self.winfo_height()))
+            except tk.TclError:
+                pass
+            delta = hook.drain()
+            if delta:
+                try:
+                    self._scroll_by(delta)
+                except Exception:
+                    pass
+        self.after(60, self._wheel_tick)
+
+    def _scroll_by(self, delta):
+        """delta 是 Windows 的滚轮原始增量，一格 = 120。"""
+        if not (self._expanded and not self._minimized and not self._edge_hidden):
+            return
+        if self._list_window is None:
+            return
+        first, last = self.list.yview()
+        if last - first >= .999:
+            return                      # 内容没超出视口，滚了也没用
+        steps = max(1, abs(int(delta / 120)) or 1) * 2
+        # 向下滚（delta<0）内容往上走，所以符号取反
+        self.list.yview_scroll(-steps if delta > 0 else steps, "units")
+        self._scroll_changed(*self.list.yview())
+        self._sync_overlay(force=True)
+
     def _hide_tip(self, e=None):
         self._tip_text = None
         if self._tip is None:
@@ -616,9 +663,25 @@ class QuestHUD(tk.Tk):
             self.render()
 
     def _wheel(self, e):
+        # Tk 这条路只在面板拿到键盘焦点时才有效（overrideredirect 的 HUD 通常
+        # 拿不到），真正干活的是 _wheel_tick 里的低层钩子。两路都留着，
+        # 谁先拿到消息都行，_scroll_by 里做了幂等保护。
         if e.delta:
-            self.list.yview_scroll(-max(1,abs(int(e.delta/120))) if e.delta>0 else max(1,abs(int(e.delta/120))), "units")
+            self._scroll_by(e.delta)
         return "break"
+
+    def _start_wheel_hook(self):
+        """装滚轮钩子。装不上就算了，面板其他功能不受影响。"""
+        try:
+            import wheel_hook
+        except Exception:
+            return
+        try:
+            hook = wheel_hook.WheelHook()
+            if hook.start():
+                self._wheel_hook = hook
+        except Exception:
+            self._wheel_hook = None
 
     def _scroll_changed(self,first,last):
         if not hasattr(self,"_viewport_h") or self._edge_hidden:
@@ -1851,7 +1914,18 @@ class QuestHUD(tk.Tk):
                 scale = self._ui_scale
                 # coords() 给的是逻辑单位，_copy_items 内部会再乘 factor，
                 # 所以这里的偏移必须换成物理像素。
-                lx, ly = self.body.coords(self._list_window)
+                # render() 会 body.delete("all")，但 _list_window 还指着旧 id，
+                # 这时候 coords() 返回空元组 —— 直接解包会抛 ValueError，
+                # 而 _paint_handle 每帧都调这里，异常刷屏最终会把 Tcl 堆搞坏
+                # （就是之前那句 alloc: invalid block）。所以先看长度再用。
+                pos = self.body.coords(self._list_window)
+                if len(pos) < 2:
+                    self._list_window = None
+                    pos = None
+                if pos is None:
+                    lx, ly = 0.0, 0.0
+                else:
+                    lx, ly = pos[0], pos[1]
                 top = self.list.canvasy(0) * scale
                 clip = (0, max(0, getattr(self, "_viewport_h", 0)) * scale)
                 self._copy_items(self.list, cv, lx * scale, ly * scale - top, clip)
