@@ -48,3 +48,7 @@ summaries/
 
 _smoke_out.txt
 _smoke_err.txt
+
+config/activity_status.json
+
+config/llm_usage.jsonl
