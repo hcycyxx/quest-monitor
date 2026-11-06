@@ -274,6 +274,7 @@ class QuestHUD(tk.Tk):
         # 文字层：主窗口半透明时，文字另画在一个 alpha=1.0 的穿透窗口上
         self._ov = None
         self._ov_cv = None
+        self._ov_list = None
         self._ov_visible = False
         self._ov_rect = None
         self._ov_stamp = 0.
@@ -376,6 +377,7 @@ class QuestHUD(tk.Tk):
             except tk.TclError:
                 pass
             self._ov, self._ov_cv = None, None
+            self._ov_list = None
         try:
             os.remove(ALIVE_FILE)
         except OSError:
@@ -1739,7 +1741,11 @@ class QuestHUD(tk.Tk):
             pass
         cv = tk.Canvas(ov, bg=TRANSPARENT, highlightthickness=0, bd=0)
         cv.pack(fill="both", expand=True)
-        self._ov, self._ov_cv = ov, cv
+        # 任务列表那一块单独用一个画布，只放在视口矩形上。
+        # 抄到一个大画布上是行不通的：滚出视口上沿的行会被画到头部去
+        # （画布没有裁剪矩形，负坐标照样画），而子画布会自己裁掉超出的部分。
+        lcv = tk.Canvas(ov, bg=TRANSPARENT, highlightthickness=0, bd=0)
+        self._ov, self._ov_cv, self._ov_list = ov, cv, lcv
         self._set_click_through(ov)
 
     @staticmethod
@@ -1910,6 +1916,9 @@ class QuestHUD(tk.Tk):
             cv = self._ov_cv
             cv.delete("all")
             self._copy_items(self.body, cv, 0, 0)
+            if self._ov_list is not None:
+                self._ov_list.delete("all")
+                self._ov_list.place_forget()
             if self._list_window is not None:
                 scale = self._ui_scale
                 # coords() 给的是逻辑单位，_copy_items 内部会再乘 factor，
@@ -1926,15 +1935,25 @@ class QuestHUD(tk.Tk):
                     lx, ly = 0.0, 0.0
                 else:
                     lx, ly = pos[0], pos[1]
-                top = self.list.canvasy(0) * scale
-                clip = (0, max(0, getattr(self, "_viewport_h", 0)) * scale)
-                self._copy_items(self.list, cv, lx * scale, ly * scale - top, clip)
+                top = self.list.canvasy(0)
+                vp_h = max(0, getattr(self, "_viewport_h", 0))
+                lcv = self._ov_list
+                if lcv is not None and vp_h > 1 and self._list_window is not None:
+                    # 视口本身是个独立的画布，滚出上沿的行会被它自己裁掉，
+                    # 不会跑到头部上去（那正是"滚完文字糊一片"的原因）。
+                    lcv.place(x=round(lx * scale), y=round(ly * scale),
+                              width=max(1, round((W - 24) * scale)),
+                              height=max(1, round(vp_h * scale)))
+                    # 直接把内容按当前滚动量上移，不用 yview ——
+                    # 画布上已经画好的 item 再叠加一次滚动偏移会滚两倍。
+                    self._copy_items(self.list, lcv, 0, -top * scale)
             if not self._ov_visible:
                 self._ov.deiconify()
                 self._ov.lift()
                 self._ov_visible = True
         except tk.TclError:
             self._ov, self._ov_cv, self._ov_visible = None, None, False
+            self._ov_list = None
 
     # ------------------------------------------------------------ 托盘与总结
 
