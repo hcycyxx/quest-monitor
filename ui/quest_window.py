@@ -153,6 +153,7 @@ def enable_dpi():
 class DesignCanvas(tk.Canvas):
     """Draw in 336-wide logical units while Windows renders at native DPI."""
     def __init__(self, master, **kw):
+        self._overlay_styles = {}
         self.factor = master.winfo_toplevel()._ui_scale
         super().__init__(master, **kw)
 
@@ -182,7 +183,20 @@ class DesignCanvas(tk.Canvas):
 
     config = configure
 
+    def delete(self,*tags):
+        if "all" in tags:
+            self._overlay_styles.clear()
+        else:
+            for tag in tags:
+                for item in self.find_withtag(tag):
+                    self._overlay_styles.pop(item,None)
+        return super().delete(*tags)
+
     def itemconfigure(self, tag, cnf=None, **kw):
+        if kw or cnf:
+            if isinstance(tag,int): self._overlay_styles.pop(tag,None)
+            else:
+                for item in self.find_withtag(tag): self._overlay_styles.pop(item,None)
         for key in ('height','width'):
             if key in kw and isinstance(kw[key],(int,float)):
                 kw[key] *= self.factor
@@ -225,6 +239,8 @@ class QuestHUD(tk.Tk):
         self._tip = None
         self._tip_text = None
         self._last_mtime = 0
+        self._wrap_cache = {}
+        self._hover_jobs = {}
         self._serial = 0
         self._motion_job = None
         self._edge_job = None
@@ -247,6 +263,15 @@ class QuestHUD(tk.Tk):
         # 皮肤与透明度存在 config/ui.json，重启后接着用上次的
         saved = load_ui()
         self._skin_key = saved.get("skin") if saved.get("skin") in SKINS else "glass"
+        # Apply the saved palette before the first draw, not only after menu clicks.
+        skin = SKINS[self._skin_key]
+        globals().update(GLASS_BG=skin["bg"],GLASS_HI=skin["hi"],WHITE=skin["text"],
+                         SUB=skin["muted"],FAINT=skin["muted"],GOLD=skin["gold"],
+                         CYAN=skin["cyan"],GREEN=skin["green"],
+                         PRIO_HIGH=skin["prio_high"],PRIO_MID=skin["prio_mid"],
+                         PRIO_LOW=skin["prio_low"],PRIO_WAIT=skin["prio_wait"],
+                         STROKE=mix(skin["bg"],skin["muted"],.4),GOLD_DIM=skin["gold"],
+                         F_SMALL=(skin["family"],8))
         self._skin_choice = tk.StringVar(self, value=self._skin_key)
         # 用户拖过滑块就记下来，之后换皮肤不再覆盖他的选择
         self._alpha_custom = "alpha" in saved
@@ -355,16 +380,47 @@ class QuestHUD(tk.Tk):
         except tk.TclError:
             pass
 
-    def _toggle(self, e=None):
-        if self._guard_reveal(e):
-            return
-        self._expanded = not self._expanded
-        self.render()
+    def _toggle(self,e=None):
+        if self._guard_reveal(e): return
+        if self._expanded and not self._minimized:
+            self._expanded=False
+            self._close_panel_motion()
+        else:
+            self._expanded=not self._expanded
+            self.render()
+
+    def _close_panel_motion(self):
+        if self._motion_job: self.after_cancel(self._motion_job)
+        self._serial+=1;serial=self._serial
+        start=self.winfo_height()/self._ui_scale;target=self._header_h+8
+        y=self.winfo_y();began=time.monotonic()
+        def frame():
+            if serial!=self._serial:return
+            t=min(1.,(time.monotonic()-began)/.20);ease=1-(1-t)**3
+            h=start+(target-start)*ease
+            self._set_size(W,h,y)
+            self.body.coords(self._shell,*self._rounded_coords(1,1,W-2,max(1,h-2),SKINS[self._skin_key]["radius"]))
+            if self._list_window is not None and self.body.type(self._list_window):
+                self._viewport_h=max(1,h-self._header_h-8)
+                self.body.itemconfigure(self._list_window,height=self._viewport_h)
+            self._sync_overlay()
+            if t<1:
+                delay=max(1,round((began+(int((time.monotonic()-began)*60)+1)/60-time.monotonic())*1000))
+                self._motion_job=self.after(delay,frame)
+            else:
+                self._motion_job=None;self.render()
+        frame()
 
     def _close(self, e=None):
         if self._guard_reveal(e):
             return
         self._close_settings()
+        for job in list(self._hover_jobs.values()):
+            try:
+                self.after_cancel(job)
+            except tk.TclError:
+                pass
+        self._hover_jobs.clear()
         for job in (self._motion_job, self._edge_job, self._effect_job):
             if job:
                 self.after_cancel(job)
@@ -692,8 +748,11 @@ class QuestHUD(tk.Tk):
     def _scroll_changed(self,first,last):
         if not hasattr(self,"_viewport_h") or self._edge_hidden:
             return
-        self.body.delete("scrollbar")
         first,last = float(first),float(last)
+        signature=(round(first,5),round(last,5),self._header_h,round(self._viewport_h,2),self._skin_key)
+        if signature==getattr(self,"_scrollbar_signature",None): return
+        self._scrollbar_signature=signature
+        self.body.delete("scrollbar")
         if last-first>=.999 or self._viewport_h<=24:
             return
         y,h = self._header_h,self._viewport_h
@@ -746,7 +805,16 @@ class QuestHUD(tk.Tk):
                 best = (score, [a, b])
         return best[1] if best else lines
 
-    def _wrap(self, text, width, font="body", limit=0):
+    def _wrap(self,text,width,font="body",limit=0):
+        key=(str(text),width,font,limit,self._skin_key,self._font_size,self._ui_scale)
+        found=self._wrap_cache.get(key)
+        if found is not None: return list(found)
+        result=self._wrap_uncached(text,width,font,limit)
+        if len(self._wrap_cache)>1024: self._wrap_cache.clear()
+        self._wrap_cache[key]=tuple(result)
+        return result
+
+    def _wrap_uncached(self, text, width, font="body", limit=0):
         f = self._fonts[font]
         lines, line = [], ""
         for ch in str(text):
@@ -782,12 +850,28 @@ class QuestHUD(tk.Tk):
         cv.tag_bind(tag,"<Button-1>",callback)
         def enter(e):
             cv.configure(cursor="hand2")
-            cv.itemconfigure(item,fill=mix(bg,WHITE,.065))
+            self._hover_to(cv,item,bg,mix(bg,WHITE,.07))
         def leave(e):
             cv.configure(cursor="arrow")
-            cv.itemconfigure(item,fill=bg)
+            self._hover_to(cv,item,mix(bg,WHITE,.07),bg)
         cv.tag_bind(tag,"<Enter>",enter)
         cv.tag_bind(tag,"<Leave>",leave)
+
+    def _hover_to(self,cv,item,start,end):
+        serial=self._serial;key=(str(cv),item)
+        job=self._hover_jobs.pop(key,None)
+        if job:
+            try: self.after_cancel(job)
+            except tk.TclError: pass
+        began=time.monotonic()
+        def frame():
+            if serial!=self._serial or not cv.type(item):
+                self._hover_jobs.pop(key,None);return
+            t=min(1.,(time.monotonic()-began)/.09)
+            cv.itemconfigure(item,fill=mix(start,end,1-(1-t)**3))
+            if t<1: self._hover_jobs[key]=self.after(15,frame)
+            else: self._hover_jobs.pop(key,None)
+        frame()
 
     def _chevron(self, cv, x, y, opened, color=None, tags=()):
         color = SUB if color is None else color
@@ -948,7 +1032,7 @@ class QuestHUD(tk.Tk):
         frac, label, source = self._measure_progress(current) if current else (None,"—","未知")
         color = GOLD
         cx, cy, r = 37, 76, 21
-        cv.create_oval(cx-r,cy-r,cx+r,cy+r,outline=mix(GLASS_BG,SUB,.22),width=3,tags="expand")
+        cv.create_oval(cx-r,cy-r,cx+r,cy+r,outline=mix(GLASS_BG,SUB,.16),width=3,tags="expand")
         if frac is not None:
             cv.create_arc(cx-r,cy-r,cx+r,cy+r,start=90,extent=-max(.01,min(359.99,frac*360)),style="arc",outline=color,width=3,tags="expand")
         ring_text = f"{frac*100:.0f}%" if frac is not None else "—"
@@ -1051,7 +1135,7 @@ class QuestHUD(tk.Tk):
         active = self._sort_by_priority(active)
         opened = self._groups.get(key, True)
         tag = "group:"+key
-        cv.create_line(10,y,W-34,y,fill=mix(GLASS_BG,SUB,.22),dash=(3,3) if self._skin_key=="journal" else ())
+        cv.create_line(10,y,W-34,y,fill=mix(GLASS_BG,SUB,.16),dash=(3,3) if self._skin_key=="journal" else ())
         self._hit(cv,8,y+4,W-40,34,tag,lambda e,k=key:self._toggle_group(k))
         cv.create_polygon(19,y+16,24,y+21,19,y+26,14,y+21,fill=color,outline="",tags=tag)
         cv.create_text(35,y+21,text=label,anchor="w",font=self._fonts["small"],fill=color,tags=tag)
@@ -1080,7 +1164,7 @@ class QuestHUD(tk.Tk):
         self._anchors[group] = y
         start = len(cv.find_all())
         title = str(q.get("title") or "未命名任务")
-        lines = self._wrap(title,W-95,"body",2)
+        lines = self._wrap(title,W-95,"title",2)
         h = len(lines)*self._line
         # 标题区只负责展开/收起步骤：把"点一下标题就算完成"取消掉，
         # 因为标题文字很长、和右边的 ⓘ 只隔几像素，很容易点错把任务误标完成。
@@ -1089,7 +1173,7 @@ class QuestHUD(tk.Tk):
         if steps_for_toggle:
             self._hit(cv,34,y,W-90,h+4,title_tag,
                       lambda e,u=uid:self._toggle_steps(u))
-        self._text(cv,40,y+2,title,W-95,"body",WHITE,2,(title_tag,))
+        self._text(cv,40,y+2,title,W-95,"title",WHITE,2,(title_tag,))
         # 左侧圆点才是"完成/恢复"开关，位置固定、热区足够大。
         mark = "mark:"+uid
         done_now = q.get("status") == "done"
@@ -1120,15 +1204,15 @@ class QuestHUD(tk.Tk):
         cv.tag_bind(info,"<Leave>",self._hide_tip)
         y += h + 7
         frac, label, source = self._measure_progress(q)
-        self._text(cv,17,y,self._live_line(q),W-145,"small",SUB,1)
+        self._text(cv,40,y,self._live_line(q),W-168,"small",SUB,1)
         cv.create_text(W-31,y,anchor="ne",text=label,font=self._fonts["small"],
                        fill=self._prio_color(q) if q.get("status") != "done" else SUB)
         y += self._small_line + 6
         waiting = q.get("status") == "waiting"
-        self._draw_progress(cv,q,uid,17,y,W-48,self._prio_color(q))
+        self._draw_progress(cv,q,uid,40,y,W-71,self._prio_color(q))
         y += 15
         if waiting:
-            y += self._text(cv,17,y,"等待回复 · 进度暂停",W-60,"small",CYAN)+4
+            y += self._text(cv,40,y,"等待回复 · 进度暂停",W-60,"small",CYAN)+4
         steps = q.get("steps") or []
         opened = self._open_steps.get(uid, False)
         if steps:
@@ -1207,7 +1291,7 @@ class QuestHUD(tk.Tk):
         cv = self.list
         done = [(k,q) for k,q in all_quests if q.get("status") == "done"]
         y = self._draw_y
-        cv.create_line(10,y,W-34,y,fill=mix(GLASS_BG,SUB,.22))
+        cv.create_line(10,y,W-34,y,fill=mix(GLASS_BG,SUB,.16))
         self._hit(cv,9,y+3,W-40,30,"done",self._toggle_done)
         self._chevron(cv,19,y+18,self._show_done,tags=("done",))
         cv.create_text(32,y+18,anchor="w",text=f"已完成（{len(done)}）",font=self._fonts["small"],fill=SUB,tags="done")
@@ -1240,7 +1324,7 @@ class QuestHUD(tk.Tk):
     def _recap(self, all_quests):
         cv = self.list
         y = self._draw_y
-        cv.create_line(10,y,W-34,y,fill=mix(GLASS_BG,SUB,.22))
+        cv.create_line(10,y,W-34,y,fill=mix(GLASS_BG,SUB,.16))
         self._hit(cv,9,y+3,W-40,30,"recap",self._toggle_recap)
         self._chevron(cv,19,y+18,self._show_recap,tags=("recap",))
         cv.create_text(32,y+18,anchor="w",text="今日回顾",font=self._fonts["small"],fill=SUB,tags="recap")
@@ -1544,6 +1628,7 @@ class QuestHUD(tk.Tk):
         old_anchors = self._anchors
         self._anchors = {}
         old_scroll = self.list.yview()[0]
+        self._scrollbar_signature = None
         self.body.delete("all")
         self.list.delete("all")
         self.list.place_forget()
@@ -1585,7 +1670,7 @@ class QuestHUD(tk.Tk):
             suggestion = str(s.get("suggestion") or "")
             if suggestion:
                 y = self._draw_y
-                self.list.create_line(10,y,W-34,y,fill=mix(GLASS_BG,SUB,.22))
+                self.list.create_line(10,y,W-34,y,fill=mix(GLASS_BG,SUB,.16))
                 y += 12
                 y += self._text(self.list,16,y,"下一步建议",W-60,"small",GOLD)+4
                 y += self._text(self.list,16,y,suggestion,W-60,"small",WHITE,3)+15
@@ -1618,7 +1703,7 @@ class QuestHUD(tk.Tk):
         def animate():
             if serial != self._serial:
                 return
-            elapsed = (time.monotonic()-start_t)/.32
+            elapsed = 1. if abs(start_h-target_h)<1 and abs(start_w-W)<1 else (time.monotonic()-start_t)/.24
             t = min(1.,elapsed)
             ease = 1-(1-t)**3
             h = round(start_h+(target_h-start_h)*ease)
@@ -1638,7 +1723,7 @@ class QuestHUD(tk.Tk):
                 self.list.move(tag,0,desired-remaining)
                 entry[1] = desired
             if t < 1:
-                self._motion_job = self.after(16,animate)
+                self._motion_job = self.after(max(1,round((start_t+(int((time.monotonic()-start_t)*60)+1)/60-time.monotonic())*1000)),animate)
             else:
                 self._motion_job = None
             self._sync_overlay()
@@ -1659,7 +1744,10 @@ class QuestHUD(tk.Tk):
             x = 0
         else:
             x = max(0,min(self.winfo_x(),self.winfo_screenwidth()-width))
-        self.geometry(f"{width}x{height}+{x}+{round(y)}")
+        target=(width,height,x,round(y))
+        if target!=getattr(self,"_last_geometry",None):
+            self.geometry(f"{width}x{height}+{x}+{round(y)}")
+            self._last_geometry=target
 
     def _paint_handle(self,serial):
         start_w,start_h = self.winfo_width()/self._ui_scale,self.winfo_height()/self._ui_scale
@@ -1849,12 +1937,11 @@ class QuestHUD(tk.Tk):
         self._ov_rect = (x, y, w, h)
         try:
             ov.geometry(f"{max(1,w)}x{max(1,h)}+{x}+{y}")
-            ov.deiconify()
-            # deiconify 之后样式可能被重置，重新压一遍穿透
-            self._set_click_through(ov)
-            ov.attributes("-topmost", self._topmost)
-            ov.lift()
-            self._ov_visible = True
+            if not self._ov_visible:
+                ov.deiconify()
+                self._set_click_through(ov)
+                ov.attributes("-topmost",self._topmost)
+                ov.lift();self._ov_visible=True
         except tk.TclError:
             self._ov = None
 
@@ -1876,71 +1963,53 @@ class QuestHUD(tk.Tk):
                 return True
         return False
 
-    def _copy_items(self, src, dst, dx, dy, clip=None):
-        """把 src 画布上的线条/图标/文字抄到文字层。
-
-        src 是 DesignCanvas，coords() 返回逻辑单位，得乘回 factor 才能对上
-        覆盖窗口的物理像素。dx/dy 也是物理像素。
-        """
-        factor = getattr(src, "factor", self._ui_scale)
+    def _copy_items(self,src,dst,dx,dy,clip=None):
+        factor=getattr(src,"factor",self._ui_scale)
+        cache=src._overlay_styles
+        mirror=getattr(dst,"_mirror_items",{})
+        alive=set()
         for item in src.find_all():
+            style=cache.get(item)
+            if style is None:
+                kind=src.type(item);allowed=OV_OPTS.get(kind)
+                if not allowed:
+                    cache[item]=(None,None);continue
+                conf={}
+                for opt in allowed:
+                    value=src.itemcget(item,opt)
+                    if value!="":conf[opt]=value
+                if src.itemcget(item,"state")=="hidden":kind=None
+                if kind and kind!="text":
+                    if conf.get("fill") and self._near_bg(conf["fill"]):conf.pop("fill")
+                    if not conf.get("fill") and not conf.get("outline"):kind=None
+                    elif conf.get("fill"):
+                        box=src.bbox(item)
+                        if box and (box[2]-box[0])*(box[3]-box[1])>OV_SKIP_AREA*factor*factor:kind=None
+                style=(kind,conf);cache[item]=style
+            kind,conf=style
+            if not kind:continue
+            coords=src.coords(item)
+            if not coords:continue
+            if clip:
+                box=src.bbox(item)
+                if box and (box[3]<clip[0] or box[1]>clip[1]):continue
+            pts=[value*factor+(dx if i%2==0 else dy) for i,value in enumerate(coords)]
+            old=mirror.get(item)
             try:
-                kind = src.type(item)
+                if old and old[0]==kind:
+                    target=old[1]
+                    if tuple(pts)!=old[3]:dst.coords(target,*pts)
+                    if conf!=old[2]:dst.itemconfigure(target,**conf)
+                else:
+                    if old:dst.delete(old[1])
+                    target=getattr(dst,"create_"+kind)(*pts,**conf)
+                mirror[item]=(kind,target,dict(conf),tuple(pts));alive.add(item)
             except tk.TclError:
-                continue
-            allowed = OV_OPTS.get(kind)
-            if not allowed:
-                continue
-            try:
-                if src.itemcget(item, "state") == "hidden":
-                    continue
-            except tk.TclError:
-                pass
-            coords = src.coords(item)
-            if not coords:
-                continue
-            box = None
-            try:
-                box = src.bbox(item)
-            except tk.TclError:
-                box = None
-            if clip and box:
-                if box[3] < clip[0] or box[1] > clip[1]:
-                    continue
-            conf = {}
-            for opt in allowed:
-                try:
-                    value = src.itemcget(item, opt)
-                except tk.TclError:
-                    continue
-                if value != "":
-                    conf[opt] = value
-            if kind != "text":
-                fill = conf.get("fill")
-                if fill and self._near_bg(fill):
-                    conf.pop("fill")
-                if not conf.get("fill") and not conf.get("outline"):
-                    continue
-                if conf.get("fill") and box and \
-                        (box[2] - box[0]) * (box[3] - box[1]) > OV_SKIP_AREA * factor * factor:
-                    continue
-            pts = [coords[i] * factor + (dx if i % 2 == 0 else dy)
-                   for i in range(len(coords))]
-            try:
-                if kind == "text":
-                    dst.create_text(pts[0], pts[1], **conf)
-                elif kind == "line":
-                    dst.create_line(*pts, **conf)
-                elif kind == "polygon":
-                    dst.create_polygon(*pts, **conf)
-                elif kind == "rectangle":
-                    dst.create_rectangle(*pts, **conf)
-                elif kind == "oval":
-                    dst.create_oval(*pts, **conf)
-                elif kind == "arc":
-                    dst.create_arc(*pts, **conf)
-            except tk.TclError:
-                pass
+                if old:dst.delete(old[1])
+                mirror.pop(item,None)
+        for item in list(mirror):
+            if item not in alive:dst.delete(mirror.pop(item)[1])
+        dst._mirror_items=mirror
 
     def _sync_overlay(self, force=False):
         """把当前画面里该实的部分抄到文字层。alpha 拉满时整个隐藏。
@@ -1952,13 +2021,17 @@ class QuestHUD(tk.Tk):
         if self._ov is None or self._ov_cv is None:
             return
         now = time.monotonic()
-        if not force and now - self._ov_stamp < .045:
+        if not force and now - self._ov_stamp < .014:
             return
         self._ov_stamp = now
         try:
             if self._alpha >= .999:
                 if self._ov_visible:
                     self._ov_cv.delete("all")
+                    self._ov_cv._mirror_items = {}
+                    if self._ov_list is not None:
+                        self._ov_list.delete("all")
+                        self._ov_list._mirror_items = {}
                     self._ov.withdraw()
                     self._ov_visible = False
                 return
@@ -1966,11 +2039,7 @@ class QuestHUD(tk.Tk):
             if self._ov is None:
                 return
             cv = self._ov_cv
-            cv.delete("all")
             self._copy_items(self.body, cv, 0, 0)
-            if self._ov_list is not None:
-                self._ov_list.delete("all")
-                self._ov_list.place_forget()
             if self._list_window is not None:
                 scale = self._ui_scale
                 # coords() 给的是逻辑单位，_copy_items 内部会再乘 factor，
@@ -1993,12 +2062,17 @@ class QuestHUD(tk.Tk):
                 if lcv is not None and vp_h > 1 and self._list_window is not None:
                     # 视口本身是个独立的画布，滚出上沿的行会被它自己裁掉，
                     # 不会跑到头部上去（那正是"滚完文字糊一片"的原因）。
-                    lcv.place(x=round(lx * scale), y=round(ly * scale),
-                              width=max(1, round((W - 24) * scale)),
-                              height=max(1, round(vp_h * scale)))
+                    rect=(round(lx*scale),round(ly*scale),max(1,round((W-24)*scale)),max(1,round(vp_h*scale)))
+                    if rect!=getattr(lcv,"_mirror_rect",None):
+                        lcv.place(x=rect[0],y=rect[1],width=rect[2],height=rect[3])
+                        lcv._mirror_rect=rect
                     # 直接把内容按当前滚动量上移，不用 yview ——
                     # 画布上已经画好的 item 再叠加一次滚动偏移会滚两倍。
                     self._copy_items(self.list, lcv, 0, -top * scale)
+                elif lcv is not None:
+                    lcv.place_forget();lcv._mirror_rect=None
+            elif self._ov_list is not None:
+                self._ov_list.place_forget();self._ov_list._mirror_rect=None
             if not self._ov_visible:
                 self._ov.deiconify()
                 self._ov.lift()
