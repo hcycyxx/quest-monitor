@@ -218,6 +218,10 @@ class QuestHUD(tk.Tk):
         self._show_recap = False
         self._groups = {"main_quests": True, "side_quests": True}
         self._open_steps = {}
+        self._show_more = {}
+        self._history_window = None
+        self._summary_open_after = False
+        self._summary_retry_after = 0.
         self._tip = None
         self._tip_text = None
         self._last_mtime = 0
@@ -793,6 +797,11 @@ class QuestHUD(tk.Tk):
     def _measure_progress(self, q):
         if q.get("status") == "done":
             return 1., "100%", "已完成"
+        if q.get("completion_candidate"):
+            return None, "待确认", "待确认"
+        bounds=q.get("progress_range")
+        if isinstance(bounds,list) and len(bounds)==2 and all(type(v) in (int,float) for v in bounds) and 0<=bounds[0]<=bounds[1]<=95 and q.get("progress_basis"):
+            return sum(bounds)/200, f"估算 {bounds[0]:.0f}–{bounds[1]:.0f}%", "估算"
         for field in ("progress_percent", "estimated_progress"):
             value = q.get(field)
             if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
@@ -1050,10 +1059,17 @@ class QuestHUD(tk.Tk):
         self._chevron(cv,W-45,y+21,opened,tags=(tag,))
         y += 43
         if opened:
+            limit=1 if key=="main_quests" else 3
+            visible=active if self._show_more.get(key,False) else active[:limit]
             if not active:
                 y += self._text(cv,17,y,"暂无待办任务",W-60,"small",SUB)+10
-            for index, q in enumerate(active):
+            for index, q in enumerate(visible):
                 y = self._task(q,key,color,y,index)
+            if len(active)>limit:
+                more="more:"+key
+                self._hit(cv,12,y,W-44,26,more,lambda e,k=key:self._toggle_more(k))
+                self._text(cv,19,y+3,"收起更多" if self._show_more.get(key,False) else f"查看其余 {len(active)-limit} 项",W-60,"small",SUB,1,(more,))
+                y+=31
         self._draw_y = y + 4
 
     def _task(self, q, key, color, y, index):
@@ -1087,6 +1103,10 @@ class QuestHUD(tk.Tk):
         cv.tag_bind(mark,"<Enter>",lambda e,t="标记完成" if not done_now else "恢复为进行中":self._show_tip(t,e))
         cv.tag_bind(mark,"<Leave>",self._hide_tip)
         note = str(q.get("note") or "暂无补充说明")
+        if q.get("progress_basis"):
+            note += "\n估算依据："+str(q["progress_basis"])
+        if q.get("completion_candidate"):
+            note += "\n疑似完成，请核对后点击左侧圆点确认。"
         prio = str(q.get("priority") or "").lower()
         if prio in ("high", "mid", "low"):
             # 优先级是模型自己判的，得让人看得见，否则排序像是随机的
@@ -1148,8 +1168,40 @@ class QuestHUD(tk.Tk):
         self.render()
 
     def _toggle_done(self,e=None):
-        self._show_done = not self._show_done
+        self._show_done=False
+        self._open_history()
+
+    def _toggle_more(self,key):
+        self._show_more[key]=not self._show_more.get(key,False)
         self.render()
+
+    def _open_history(self):
+        if self._history_window is not None and self._history_window.winfo_exists():
+            self._history_window.lift()
+            return
+        top=tk.Toplevel(self);self._history_window=top
+        top.title("已完成 · 历史记录");top.configure(bg=GLASS_BG)
+        top.geometry("620x580");top.transient(self)
+        tk.Label(top,text="完成历史",font=F_TITLE,fg=WHITE,bg=GLASS_BG).pack(anchor="w",padx=18,pady=14)
+        frame=tk.Frame(top,bg=GLASS_BG);frame.pack(fill="both",expand=True,padx=18)
+        listing=tk.Listbox(frame,bg=GLASS_BG,fg=WHITE,selectbackground=GLASS_HI,selectforeground=WHITE,font=F_BODY,highlightthickness=0,bd=0)
+        scroll=tk.Scrollbar(frame,command=listing.yview);scroll.pack(side="right",fill="y")
+        listing.configure(yscrollcommand=scroll.set);listing.pack(side="left",fill="both",expand=True)
+        rows=[]
+        def refresh():
+            rows.clear();listing.delete(0,"end");state=load_state()
+            for key in ("main_quests","side_quests"):
+                rows.extend((key,q) for q in state.get(key,[]) if q.get("status")=="done")
+            rows.sort(key=lambda pair:str(pair[1].get("completed_at") or ""),reverse=True)
+            for key,q in rows:
+                stamp=self._completed_time(q)
+                listing.insert("end",(stamp.strftime("%m-%d %H:%M") if stamp else "时间未记录")+"  "+str(q.get("title","")))
+        def restore():
+            selected=listing.curselection()
+            if selected:
+                key,q=rows[selected[0]];self._toggle_quest(key,q.get("id",""));refresh()
+        tk.Button(top,text="恢复选中任务",command=restore,bg=GLASS_HI,fg=WHITE,relief="flat").pack(pady=12)
+        refresh()
 
     def _timeline(self, all_quests):
         cv = self.list
@@ -2012,64 +2064,51 @@ class QuestHUD(tk.Tk):
         elif action == "quit":
             self._quit_all()
 
-    def _open_summary(self, date=None):
-        """没指定日期就打开今天；今天还没生成过就先生成再打开。"""
+    def _open_summary(self,date=None):
         try:
             import daily_summary as ds
-        except Exception:
-            return
-        try:
-            if date:
-                path = os.path.join(ds.OUT, "%s.html" % date)
-                if not os.path.exists(path):
-                    path = ds.build(ds.datetime.strptime(date, "%Y-%m-%d").date(),
-                                    use_llm=False)
-            else:
-                path = os.path.join(ds.OUT, "%s.html" % ds.datetime.now(ds.TZ).date())
-                if not os.path.exists(path):
-                    path = self._generate_summary(open_after=False)
-            if path and os.path.exists(path):
+            day=ds.datetime.strptime(date,"%Y-%m-%d").date() if date else ds.datetime.now(ds.TZ).date()
+            path=ds.latest(day)
+            if path:
                 os.startfile(path)
-        except Exception:
-            pass
+            else:
+                self._generate_summary(open_after=True,day=day)
+        except Exception as exc:
+            self._flash_note("总结打开失败："+str(exc)[:50])
 
-    def _generate_summary(self, open_after=False):
-        """生成会问一次模型，可能要几秒；放后台线程，别卡住面板。"""
+    def _generate_summary(self,open_after=False,day=None):
         if self._summary_busy:
+            self._summary_open_after=self._summary_open_after or open_after
             return None
-        self._summary_busy = True
-        result = {}
-
+        self._summary_busy=True
+        self._summary_open_after=open_after
+        result={}
         def run():
             try:
                 import daily_summary as ds
-                path = ds.build()
-                result["path"] = path
-                ds.mark_auto(ds.datetime.now(ds.TZ).date())
+                result["path"]=ds.build(day)
+                if result["path"] and os.path.isfile(result["path"]):
+                    ds.mark_auto(day or ds.datetime.now(ds.TZ).date())
             except Exception as exc:
-                result["error"] = str(exc)
+                result["error"]=str(exc)
             finally:
-                self._summary_busy = False
-
+                self._summary_busy=False
         import threading
-        threading.Thread(target=run, daemon=True).start()
-
-        def wait(n=0):
-            if self._summary_busy and n < 120:
-                self.after(250, lambda: wait(n + 1))
-                return
-            path = result.get("path")
+        threading.Thread(target=run,daemon=True).start()
+        def wait():
+            if self._summary_busy:
+                self.after(250,wait);return
             self._refresh_tray_history()
-            if not path:
-                self._flash_note("总结没生成出来，看 logs 里的报错")
-                return
-            if open_after and os.path.exists(path):
-                try:
-                    os.startfile(path)
-                except OSError:
-                    pass
-        self.after(250, wait)
-        return result.get("path")
+            path=result.get("path")
+            if not path or not os.path.isfile(path):
+                self._summary_retry_after=time.monotonic()+300
+                self._flash_note("总结未生成，稍后可重试");return
+            if self._summary_open_after:
+                try: os.startfile(path)
+                except OSError: self._flash_note("总结已保存，打开失败")
+            self._summary_open_after=False
+        self.after(250,wait)
+        return None
 
     def _flash_note(self, text):
         """在顶栏当前行动位置闪一句提示，2 秒后自动回到正常内容。
@@ -2091,15 +2130,12 @@ class QuestHUD(tk.Tk):
             pass
 
     def _summary_tick(self):
-        """到点自动生成。每天只生成一次，靠 summaries/.auto-<date> 记。"""
         try:
             import daily_summary as ds
-            hour = int(self._summary_hour or 18)
-            day = ds.auto_due(hour)
-            if day and not self._summary_busy:
-                self._generate_summary(open_after=False)
-                ds.mark_auto(day)
-                self._refresh_tray_history()
+            hour=18 if self._summary_hour is None else int(self._summary_hour)
+            day=ds.auto_due(hour)
+            if day and not self._summary_busy and time.monotonic()>=self._summary_retry_after:
+                self._generate_summary(open_after=False,day=day)
         except Exception:
             pass
 

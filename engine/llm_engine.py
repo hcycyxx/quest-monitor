@@ -46,7 +46,7 @@ SYSTEM_PROMPT = """你是任务面板分析引擎。用户在你不知道的时�
 
 轨迹有三种行：
 - `20:42:38 [wps.exe] 报价表.xlsx - WPS 表格 · 5分12秒` 表示他在这个窗口待了这么久。
-- 紧跟其后的 `    文档: ...` 是**直接读取该文件**得到的原文（xlsx/docx 内部就是文本），内容准确，客户名、型号、金额都可以直接采信。
+- 紧跟其后的 `    文档: ...` 是**直接读取该文件**得到的原文（xlsx/docx 内部就是文本），它是磁盘候选版本，不一定是正在看的文件、工作表或未保存内容；客户、型号、金额必须与屏幕证据交叉核对。
 - 紧跟其后的 `    看到: ...` 是从窗口截图里认出来的字（聊天记录、网页、PDF、WPS 私有格式）。它比标题精确，但**认字会出错**：`缋效` 其实是 `绩效`、`报佾` 是 `报价`。别把看起来不像词的片段当成客户名或文件名；能从上下文推断出正确写法的，用正确写法。
 
 规则：
@@ -60,13 +60,15 @@ SYSTEM_PROMPT = """你是任务面板分析引擎。用户在你不知道的时�
 8. 看到的内容里如果有明确的业务动作（收到订单、客户问价、要发货），那是新支线的信号，别当成噪声。
 
 自主判断（重要）：
-9. 你有权自己把任务标成 done，但要给证据：轨迹里出现了明确完成信号（文件另存为带"最终/已发/Final"、邮件发出去了、报价表保存关闭、聊天里说了"已发你"）才标 done。只是打开看过、切走了、超过一小时没碰，都不算完成，那是 pending 或 waiting。
-10. 一个任务你之前标过 done，但后面轨迹显示他又打开同一个文件继续改（说明当时判断早了），就把它改回 active 并在该项里写 "reopen": true。用户手动勾过的任务不要碰，本地会保留他的选择。
-11. 支线超过两小时没再碰、而且主线还开着，就把它标 done（收尾），别让它一直挂在列表里。
-12. 只输出 JSON，不要 markdown 代码块，不要解释。
+9. 完成必须由用户确认。看到明确发出、交付等信号时，用 pending 和 completion_candidate:true，并写 completion_evidence，等待用户勾选；不要自行标 done。文件名带 Final、保存关闭、切走窗口均不足以证明业务完成。
+10. 之前自动误判的任务可用 active 和 reopen:true 重开；用户手动状态不能覆盖。
+11. 两小时未碰的支线只能 pending 或 waiting，绝不能因时间过去而标 done。
+12. 每项给 live_progress：22字以内的实时进展，描述观察到的成果和正在做的步骤，不重复标题。只有有工作量依据时给 progress_range:[下限,上限]（0~95，按10个百分点分档）和 progress_basis；无法判断写 null，不按耗时增长。等待状态不得增长进度。区间是工作量估算，不是步骤勾选比例。
+13. 在 note 写清依据来源、原始观察时间；磁盘候选须注明非当前视图，OCR 须注明可能错字。不要编造路径、时间或证据。
+14. 只输出 JSON，不要 markdown 代码块，不要解释。
 
 输出格式：
-{"changed": true/false, "state": {"main_quests":[{"id":"M1","title":"...","status":"active","priority":"high","progress":"...","note":"...","steps":[{"text":"...","done":false}]}], "side_quests":[同结构], "current_activity":"...", "suggestion":"...", "updated_at":"ISO时间"}}
+{"changed": true/false, "state": {"main_quests":[{"id":"M1","title":"...","status":"active","priority":"high","progress":"...","live_progress":"...","progress_range":null,"progress_basis":"","note":"...","steps":[{"text":"...","done":false}]}], "side_quests":[同结构], "current_activity":"...", "suggestion":"...", "updated_at":"ISO时间"}}
 只输出 JSON。"""
 
 
@@ -136,10 +138,11 @@ def read_log_tail(n=10, stall=5.0, scan=400, absorb=180.0, content="light"):
             if content_txt:
                 segments[-1]["content"] = content_txt
                 segments[-1]["src"] = r.get("src") or ""
+                segments[-1]["evidence"] = r.get("evidence") or {}
         else:
             segments.append({"key": key, "start": r["_ts"], "end": r["_ts"],
                              "idle": float(r.get("idle_s") or 0),
-                             "content": content_txt,
+                             "content": content_txt, "evidence": r.get("evidence") or {},
                              "src": (r.get("src") or "") if content_txt else ""})
 
     for i, seg in enumerate(segments):
@@ -175,6 +178,9 @@ def read_log_tail(n=10, stall=5.0, scan=400, absorb=180.0, content="light"):
                 and seg["start"] - merged[-1]["start"] <= absorb:
             merged[-1]["dwell"] += seg["dwell"]
             merged[-1]["idle"] = max(merged[-1]["idle"], seg["idle"])
+            if seg.get("content"):
+                for field in ("content", "src", "evidence"):
+                    merged[-1][field] = seg.get(field)
         else:
             merged.append(dict(seg))
     kept = merged[-n:]
@@ -200,7 +206,10 @@ def read_log_tail(n=10, stall=5.0, scan=400, absorb=180.0, content="light"):
             body = " ".join(body.split())[:cap_content]
             # 标出来源：文档 = 直接读的文件原文（一字不差），看到 = 认字认得（可能错字）。
             # 模型据此决定要不要相信里面的客户名和数字。
-            head = "    文档: " if seg.get("src") == "file" else "    看到: "
+            ev = seg.get("evidence") or {}
+            source = "磁盘候选（非当前视图）" if seg.get("src") == "file" else "屏幕文字（可能识别错误）"
+            detail = " | ".join(str(ev[k]) for k in ("path", "file_modified_at", "captured_at") if ev.get(k))
+            head = "    " + source + (" ["+detail+"]" if detail else "") + ": "
             out.append(head + body)
     return "\n".join(out)
 

@@ -191,6 +191,7 @@ def _probe_worker():
         rec = dict(base)
         rec["content"] = text
         rec["src"] = got.get("src", "")
+        rec["evidence"] = got.get("evidence") or {}
         append_rec(rec)
 
 

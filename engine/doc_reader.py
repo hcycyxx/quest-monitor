@@ -103,16 +103,7 @@ def _recent_map():
             if not target or not os.path.isfile(target):
                 continue
             key = os.path.basename(target).lower()
-            # 同名多份时留最近动过的那个
-            prev = out.get(key)
-            if prev is None:
-                out[key] = target
-            else:
-                try:
-                    if os.path.getmtime(target) > os.path.getmtime(prev):
-                        out[key] = target
-                except OSError:
-                    pass
+            out.setdefault(key, []).append(target)
     except Exception:
         return {}
     with _lock:
@@ -135,15 +126,7 @@ def _scan_index():
                 if ext_of(f) in PARSE_EXTS:
                     key = f.lower()
                     full = os.path.join(dirpath, f)
-                    prev = out.get(key)
-                    if prev is None:
-                        out[key] = full
-                    else:
-                        try:
-                            if os.path.getmtime(full) > os.path.getmtime(prev):
-                                out[key] = full
-                        except OSError:
-                            pass
+                    out.setdefault(key, []).append(full)
     with _lock:
         _index["map"] = out
         _index["at"] = time.time()
@@ -166,17 +149,16 @@ def _index_map():
 
 
 def locate(name):
-    """按文件名找真实路径。找不到返回空串。"""
     if not name:
         return ""
-    key = name.lower()
-    p = _recent_map().get(key)
-    if p and os.path.isfile(p):
-        return p
-    p = _index_map().get(key)
-    if p and os.path.isfile(p):
-        return p
-    return ""
+    if os.path.isabs(name):
+        return name if os.path.isfile(name) else ""
+    candidates = []
+    for mapping in (_recent_map(), _index_map()):
+        value = mapping.get(name.lower(), [])
+        candidates.extend([value] if isinstance(value,str) else value)
+    paths = {os.path.normcase(os.path.abspath(p)):p for p in candidates if os.path.isfile(p)}
+    return next(iter(paths.values())) if len(paths)==1 else ""
 
 
 # ---------------------------------------------------------------- 解析
@@ -325,19 +307,19 @@ def read_file(path, budget=TEXT_CAP):
 # ---------------------------------------------------------------- 对外
 
 def read_for_title(title, budget=TEXT_CAP):
-    """窗口标题 → {"path","text"}。读不到返回 {"path":"","text":""}。
-
-    注意：文件是磁盘上的版本。文档有未保存改动时（标题带 `*`），
-    读到的会比屏幕上的旧一点 —— 但"在改哪个客户的哪张表"这个信息是准的，
-    这正是模型缺的那部分。
-    """
+    # A '*' explicitly means that disk content may be stale. Prefer UIA/OCR.
+    if "*" in title:
+        return {"path":"", "text":""}
     name = doc_name(title)
-    if not name:
-        return {"path": "", "text": ""}
-    path = locate(name)
+    path = locate(name) if name else ""
     if not path:
-        return {"path": "", "text": ""}
-    return {"path": path, "text": read_file(path, budget)}
+        return {"path":"", "text":""}
+    from datetime import datetime, timezone, timedelta
+    try:
+        modified = datetime.fromtimestamp(os.path.getmtime(path),timezone(timedelta(hours=8))).isoformat(timespec="seconds")
+    except OSError:
+        return {"path":"", "text":""}
+    return {"path":path,"text":read_file(path,budget),"file_modified_at":modified,"scope":"saved-file-candidate"}
 
 
 def explorer_listing(title, budget=TEXT_CAP, limit=25):

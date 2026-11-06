@@ -338,49 +338,38 @@ def collect(day=None, use_llm=True):
 
 
 def build(day=None, use_llm=True):
-    """生成 HTML 并返回文件路径。文件名固定用日期，重复生成直接覆盖。
-
-    写不进去时返回空串而不是抛异常：总结是自动触发的，半夜三点因为
-    目录只读崩一次，用户第二天只会看到托盘菜单点了没反应。
-    """
-    day = day or datetime.now(TZ).date()
-    data = collect(day, use_llm=use_llm)
-    html = summary_html.render(data)
-    path = os.path.join(OUT, "%s.html" % day.isoformat())
-    tmp = path + ".tmp"
+    """Write a new dated version; an existing report is never overwritten."""
+    day=day or datetime.now(TZ).date()
+    html=summary_html.render(collect(day,use_llm=use_llm))
     try:
-        os.makedirs(OUT, exist_ok=True)
-        with open(tmp, "w", encoding="utf-8") as f:
+        os.makedirs(OUT,exist_ok=True)
+        import uuid
+        path=os.path.join(OUT,day.isoformat()+"_"+datetime.now(TZ).strftime("%H%M%S_%f")+"_"+uuid.uuid4().hex[:6]+".html")
+        with open(path,"x",encoding="utf-8") as f:
             f.write(html)
-        os.replace(tmp, path)
+        return path
     except OSError:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
         return ""
-    return path
+
+def versions(day):
+    prefix=day.isoformat() if hasattr(day,"isoformat") else str(day)
+    try:
+        names=[n for n in os.listdir(OUT) if re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:_[A-Za-z0-9_]+)?\.html",n) and n[:10]==prefix]
+        return sorted((os.path.join(OUT,n) for n in names),key=os.path.getmtime,reverse=True)
+    except OSError:
+        return []
+
+def latest(day):
+    found=versions(day)
+    return found[0] if found else ""
 
 
 def history():
-    """按日期倒序列出已生成的总结：[{date, path, mtime, size}]。"""
-    items = []
     try:
-        names = os.listdir(OUT)
+        days={n[:10] for n in os.listdir(OUT) if re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:_[A-Za-z0-9_]+)?\.html",n)}
+        return [{"date":d,"path":latest(d),"mtime":os.path.getmtime(latest(d)),"size":os.path.getsize(latest(d))} for d in sorted(days,reverse=True) if latest(d)]
     except OSError:
-        return items
-    for name in names:
-        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}\.html", name):
-            continue
-        path = os.path.join(OUT, name)
-        try:
-            stat = os.stat(path)
-        except OSError:
-            continue
-        items.append({"date": name[:-5], "path": path,
-                      "mtime": stat.st_mtime, "size": stat.st_size})
-    items.sort(key=lambda i: i["date"], reverse=True)
-    return items
+        return []
 
 
 def _marker_path(day):

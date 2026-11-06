@@ -1,3 +1,4 @@
+import task_policy
 """V6 shared state transactions. Standard library only; no network or workers."""
 import copy
 import hashlib
@@ -215,6 +216,7 @@ def merge_ai_state(proposal, latest, max_active=8):
             # 老任务不补（补了也是假时间），缺失时总结那边按「时间未知」处理。
             if prior is None:
                 q.setdefault('created_at', now())
+            q = task_policy.normalize_task(q, prior)
             output.append(q)
         # The model's abbreviated response is never an instruction to delete history
         # or a task that the user has explicitly edited.

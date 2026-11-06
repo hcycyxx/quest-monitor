@@ -457,49 +457,30 @@ def ocr_text(hwnd, exe=""):
 # ---------------------------------------------------------------- 对外
 
 def probe(hwnd, want_ocr=True, exe="", title=""):
-    """返回 {"src","text","ms"}。src 说明这段字是怎么来的，方便判断可靠性。
-
-    优先级：读文件 > UIA > OCR。
-
-    读文件排最前，因为 OCR 认表格必错字 —— 同一张绩效表，系统 OCR 把
-    「绩效」认成「缋效」、「报价」认成「报佾」，九个常用词只对零个；
-    RapidOCR 好些也只有八成。而 .xlsx/.docx 里存的就是原文，读出来一字不差，
-    还只要 2 毫秒。只有读不到文件（PDF、网页、WPS 私有格式、图片）才退回 OCR。
-    """
-    t0 = time.time()
-    text, src = "", "none"
-
-    if DOC_READ:
-        doc = doc_reader.read_for_title(title)
-        if doc["text"]:
-            text, src = doc["text"], "file"
-        elif (exe or "").lower() == "explorer.exe":
-            # 资源管理器：标题就是路径，直接列目录，比 OCR 认界面强得多
-            # （OCR 只会读到"文件 主页 共享 查看 剪切 新建项目"这些按钮名）
-            listing = doc_reader.explorer_listing(title)
-            if listing["text"]:
-                text, src = listing["text"], "file"
-
-    if not text:
-        text, _items = uia_text(hwnd)
-        src = "uia"
-        # 办公套件对 UIA 基本不配合，能问出来的只有"文档内按F1"这类固定文案，
-        # 真内容全在自绘画布里 —— 这类程序直接走 OCR，别浪费时间问。
-        forced = (exe or "").lower() in OCR_ONLY_EXES
-        if want_ocr and OCR_ENGINE != "off" and (forced or len(text) < UIA_MIN_GOOD):
-            alt = ocr_text(hwnd, exe=exe)
-            if len(alt) > len(text) or forced:
-                text, src = alt, ("ocr" if not text else "uia+ocr")
-
-    text = strip_noise(tidy(text))
-    # 聊天软件先切掉左侧会话列表再截断：顺序反了的话，会话列表会先把 700 字
-    # 的额度吃光，正文只剩开头一百来字。
+    from datetime import datetime, timezone, timedelta
+    t0=time.time()
+    text,_items=uia_text(hwnd)
+    src="uia"
+    forced=(exe or "").lower() in OCR_ONLY_EXES
+    if want_ocr and OCR_ENGINE!="off" and (forced or len(text)<UIA_MIN_GOOD):
+        alt=ocr_text(hwnd,exe=exe)
+        if alt and (forced or len(alt)>len(text)):
+            text,src=alt,"ocr"
+    evidence={"captured_at":datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds"),"scope":"visible-window"}
+    if DOC_READ and len(text)<UIA_MIN_GOOD:
+        doc=doc_reader.read_for_title(title)
+        if doc.get("text"):
+            text,src=doc["text"],"file"
+            evidence.update({k:doc[k] for k in ("path","file_modified_at","scope") if k in doc})
+        elif (exe or "").lower()=="explorer.exe":
+            doc=doc_reader.explorer_listing(title)
+            if doc.get("text"):
+                text,src=doc["text"],"file"
+                evidence.update(path=doc.get("path",""),scope="directory-listing")
+    text=strip_noise(tidy(text))
     if (exe or "").lower() in CHAT_EXES:
-        text = drop_chat_sidebar(text)
-    text = text[:TEXT_CAP]
-    return {"src": src if text else "none",
-            "text": text,
-            "ms": int((time.time() - t0) * 1000)}
+        text=drop_chat_sidebar(text)
+    return {"src":src if text else "none","text":text[:TEXT_CAP],"evidence":evidence,"ms":int((time.time()-t0)*1000)}
 
 
 if __name__ == "__main__":
