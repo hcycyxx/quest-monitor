@@ -239,6 +239,8 @@ class QuestHUD(tk.Tk):
         self._tip = None
         self._tip_text = None
         self._last_mtime = 0
+        self._region_motion = None
+        self._fine_timer = False
         self._wrap_cache = {}
         self._hover_jobs = {}
         self._serial = 0
@@ -258,6 +260,7 @@ class QuestHUD(tk.Tk):
         self._reveal_until = 0.
         self._normal_height = 128
         self._paused = bool(svc and svc.is_paused())
+        self._idle_suspended = False
         self._power_busy = False
         self._power_serial = 0
         # 皮肤与透明度存在 config/ui.json，重启后接着用上次的
@@ -390,30 +393,33 @@ class QuestHUD(tk.Tk):
             self.render()
 
     def _close_panel_motion(self):
+        self._end_region_motion()
         if self._motion_job: self.after_cancel(self._motion_job)
         self._serial+=1;serial=self._serial
         start=self.winfo_height()/self._ui_scale;target=self._header_h+8
         y=self.winfo_y();began=time.monotonic()
+        region=self._begin_region_motion(W,start,W,target,y)
         def frame():
             if serial!=self._serial:return
-            t=min(1.,(time.monotonic()-began)/.20);ease=1-(1-t)**3
+            t=min(1.,(time.monotonic()-began)/.24);ease=t*t*t*(10-15*t+6*t*t)
             h=start+(target-start)*ease
             self._set_size(W,h,y)
             self.body.coords(self._shell,*self._rounded_coords(1,1,W-2,max(1,h-2),SKINS[self._skin_key]["radius"]))
             if self._list_window is not None and self.body.type(self._list_window):
-                self._viewport_h=max(1,h-self._header_h-8)
+                self._viewport_h=max(1,(self._region_motion['full'] if self._region_motion else h)-self._header_h-8)
                 self.body.itemconfigure(self._list_window,height=self._viewport_h)
             self._sync_overlay()
             if t<1:
                 delay=max(1,round((began+(int((time.monotonic()-began)*60)+1)/60-time.monotonic())*1000))
                 self._motion_job=self.after(delay,frame)
             else:
-                self._motion_job=None;self.render()
+                self._motion_job=None;self._end_region_motion(target);self.render()
         frame()
 
     def _close(self, e=None):
         if self._guard_reveal(e):
             return
+        self._end_region_motion()
         self._close_settings()
         for job in list(self._hover_jobs.values()):
             try:
@@ -557,6 +563,14 @@ class QuestHUD(tk.Tk):
         self._tip.lift()
 
     def tick(self):
+        try:
+            with open(paths.config("activity_status.json"),encoding="utf-8") as activity_file:
+                activity=json.load(activity_file)
+            sleeping=bool(activity.get("suspended")) and time.time()-float(activity.get("checked_at",0))<35
+        except (OSError,ValueError,TypeError):
+            sleeping=False
+        if sleeping!=self._idle_suspended:
+            self._idle_suspended=sleeping;self._last_mtime=None
         try:
             with open(ALIVE_FILE, "w", encoding="utf-8") as f:
                 f.write(str(int(time.time())))
@@ -973,7 +987,7 @@ class QuestHUD(tk.Tk):
         cv.tag_bind("drag", "<Leave>", lambda e: cv.configure(cursor="arrow"))
         paused = self._paused
         if not mini:
-            brand = SKINS[self._skin_key]["brand"] + (" · 暂停" if paused else "")
+            brand = SKINS[self._skin_key]["brand"] + (" · 暂停" if paused else " · 自动休息" if self._idle_suspended else "")
             cv.create_text(30,20,anchor="w",text=brand,font=self._fonts["small"],
                            fill=SUB,tags="drag")
         self._hit(cv,W-160,7,25,27,"skin",self._skin_picker,GLASS_BG)
@@ -1616,6 +1630,7 @@ class QuestHUD(tk.Tk):
         self.render()
 
     def render(self):
+        self._end_region_motion()
         self._serial += 1
         serial = self._serial
         if self._motion_job:
@@ -1700,18 +1715,19 @@ class QuestHUD(tk.Tk):
         start_h = max(1,self.winfo_height()/self._ui_scale)
         start_w = max(1,self.winfo_width()/self._ui_scale)
         start_t = time.monotonic()
+        region=self._begin_region_motion(start_w,start_h,W,target_h,y) if abs(start_h-target_h)>1 else False
         def animate():
             if serial != self._serial:
                 return
-            elapsed = 1. if abs(start_h-target_h)<1 and abs(start_w-W)<1 else (time.monotonic()-start_t)/.24
+            elapsed = 1. if abs(start_h-target_h)<1 and abs(start_w-W)<1 else (time.monotonic()-start_t)/.30
             t = min(1.,elapsed)
-            ease = 1-(1-t)**3
+            ease = t*t*t*(10-15*t+6*t*t)
             h = round(start_h+(target_h-start_h)*ease)
             width = round(start_w+(W-start_w)*ease)
             self._set_size(width,h,y)
             self.body.coords(self._shell,*self._rounded_coords(1,1,W-2,max(1,h-2),SKINS[self._skin_key]["radius"]))
             if total:
-                self._viewport_h = max(1,h-self._header_h-8)
+                self._viewport_h = max(1,(self._region_motion['full'] if self._region_motion else h)-self._header_h-8)
                 self.body.itemconfigure(self._list_window,height=self._viewport_h)
                 self._scroll_changed(*self.list.yview())
             for item,x,by,bw,old,new in self._bar_anims:
@@ -1726,6 +1742,7 @@ class QuestHUD(tk.Tk):
                 self._motion_job = self.after(max(1,round((start_t+(int((time.monotonic()-start_t)*60)+1)/60-time.monotonic())*1000)),animate)
             else:
                 self._motion_job = None
+                self._end_region_motion(target_h)
             self._sync_overlay()
         animate()
         self._start_effect(serial)
@@ -1736,7 +1753,72 @@ class QuestHUD(tk.Tk):
         return (x+r,y,x+w-r,y,x+w,y,x+w,y+r,x+w,y+h-r,x+w,y+h,
                 x+w-r,y+h,x+r,y+h,x,y+h,x,y+h-r,x,y+r,x,y)
 
+    def _begin_region_motion(self,start_w,start_h,target_w,target_h,y):
+        """Resize once, then reveal a native region. No WM resize on every frame."""
+        self._region_motion=None
+        if os.name!='nt' or abs(start_w-target_w)>1:
+            return False
+        try:
+            import ctypes
+            u=ctypes.windll.user32;g=ctypes.windll.gdi32
+            u.GetAncestor.argtypes=[ctypes.c_void_p,ctypes.c_uint];u.GetAncestor.restype=ctypes.c_void_p
+            u.SetWindowRgn.argtypes=[ctypes.c_void_p,ctypes.c_void_p,ctypes.c_bool];u.SetWindowRgn.restype=ctypes.c_int
+            g.CreateRoundRectRgn.argtypes=[ctypes.c_int]*6;g.CreateRoundRectRgn.restype=ctypes.c_void_p
+            g.DeleteObject.argtypes=[ctypes.c_void_p]
+            handles=[u.GetAncestor(self.winfo_id(),2)]
+            if self._ov is not None and self._alpha<.999:
+                handles.append(u.GetAncestor(self._ov.winfo_id(),2))
+            ctx={'u':u,'g':g,'handles':[h for h in handles if h],'last':None,
+                 'height':start_h,'full':max(start_h,target_h),'target':target_h,'y':y}
+            self._region_motion=ctx
+            self._set_native_size(target_w,ctx['full'],y)
+            if not self._apply_region_height(start_h):
+                raise RuntimeError('native region unavailable')
+            try:
+                self._fine_timer=ctypes.windll.winmm.timeBeginPeriod(1)==0
+            except (AttributeError,OSError):self._fine_timer=False
+            return True
+        except (AttributeError,OSError,RuntimeError,tk.TclError):
+            self._end_region_motion(start_h)
+            return False
+
+    def _apply_region_height(self,height):
+        ctx=getattr(self,'_region_motion',None)
+        if not ctx:return False
+        ctx['height']=height
+        width=max(1,round(W*self._ui_scale));bottom=max(1,round(height*self._ui_scale))
+        radius=max(2,round(SKINS[self._skin_key]['radius']*2*self._ui_scale))
+        signature=(width,bottom,radius)
+        if signature==ctx['last']:return True
+        for handle in ctx['handles']:
+            region=ctx['g'].CreateRoundRectRgn(0,0,width+1,bottom+1,radius,radius)
+            if not region:return False
+            if not ctx['u'].SetWindowRgn(handle,region,True):
+                ctx['g'].DeleteObject(region);return False
+            # Successful SetWindowRgn transfers ownership to Windows.
+        ctx['last']=signature
+        return True
+
+    def _end_region_motion(self,height=None):
+        ctx=getattr(self,'_region_motion',None)
+        self._region_motion=None
+        if ctx:
+            final=ctx['height'] if height is None else height
+            self._set_native_size(W,final,ctx['y'])
+            self.update_idletasks()
+            for handle in ctx['handles']:ctx['u'].SetWindowRgn(handle,None,True)
+        if getattr(self,'_fine_timer',False):
+            import ctypes
+            ctypes.windll.winmm.timeEndPeriod(1);self._fine_timer=False
+
     def _set_size(self,width,height,y):
+        if getattr(self,'_region_motion',None):
+            if self._apply_region_height(height):return
+            self._end_region_motion(height)
+        self._set_native_size(width,height,y)
+
+
+    def _set_native_size(self,width,height,y):
         width,height = max(1,round(width*self._ui_scale)),max(1,round(height*self._ui_scale))
         if self._dock_side == "right":
             x = self.winfo_screenwidth()-width-round(max(0,getattr(self,"_right_margin",0))*self._ui_scale)

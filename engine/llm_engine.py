@@ -8,6 +8,7 @@ import os
 import time
 from datetime import datetime
 import urllib.request
+from inference_control import CallGate, PromptSession, usage_metrics
 import state_store as store
 import paths
 
@@ -254,10 +255,8 @@ def state_digest(state):
 def call_llm(cfg, user_msg, retries=2):
     body = json.dumps({
         "model": cfg["model"],
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_msg},
-        ],
+        "messages": user_msg if isinstance(user_msg,list) else [
+            {"role":"system","content":SYSTEM_PROMPT},{"role":"user","content":user_msg}],
         "temperature": 0.2,
         "max_tokens": 1500,
     }).encode("utf-8")
@@ -271,6 +270,13 @@ def call_llm(cfg, user_msg, retries=2):
         try:
             with urllib.request.urlopen(req, timeout=90) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
+            metrics=usage_metrics(data.get("usage"))
+            log("用量 input=%s cached=%s output=%s" % (metrics["input_tokens"],metrics["cached_tokens"] if metrics["cache_reported"] else "代理未返回",metrics["output_tokens"]))
+            try:
+                with open(paths.config("llm_usage.jsonl"),"a",encoding="utf-8") as usage_file:
+                    usage_file.write(json.dumps({"at":time.time(),"model":cfg.get("model"),**metrics},ensure_ascii=False)+"\n")
+            except OSError:
+                pass
             return data["choices"][0]["message"]["content"]
         except Exception as e:
             last_err = e
@@ -388,6 +394,9 @@ def main_loop():
     # 它拿磁盘上最新状态和合并结果比，比这里留一个本进程内的快照可靠
     # （重启后不会重写、也不会被其他进程的写入骗过去）。
     idle_noted = False
+    idle_suspended=False
+    gate=CallGate();session=PromptSession(SYSTEM_PROMPT)
+    next_error_retry=0.;failures=0;last_cfg=(cfg.get("model"),cfg.get("base_url"))
     try:
         cfg_mtime = os.path.getmtime(CFG)
     except OSError:
@@ -414,18 +423,38 @@ def main_loop():
         if idle_noted:
             log("面板已恢复 → 继续分析")
             idle_noted = False
+        activity=load_json(paths.config("activity_status.json"),{})
+        fresh=time.time()-float(activity.get("checked_at",0))<35
+        suspended=fresh and bool(activity.get("suspended"))
+        if suspended:
+            if not idle_suspended:log("无操作且画面静止30分钟 → 暂停模型提交，轻量监测继续")
+            idle_suspended=True;time.sleep(5);continue
+        if idle_suspended:
+            log("检测到操作或画面变化 → 恢复分析")
+            idle_suspended=False;gate.last_at=None
+            time.sleep(5)  # Give the watcher time to attach fresh screen text.
+            continue
+        current_cfg=(cfg.get("model"),cfg.get("base_url"))
+        if current_cfg!=last_cfg:
+            session=PromptSession(SYSTEM_PROMPT);gate=CallGate();last_cfg=current_cfg
+        if time.monotonic()<next_error_retry:
+            time.sleep(5);continue
         try:
             level = str(cfg.get("content_level", "light")).lower()
             log_text = read_log_tail(content=level)
             prev = load_json(STATE, {})
-            user_msg = (
-                f"当前时间: {time.strftime('%Y-%m-%dT%H:%M:%S')}\n"
-                f"上次面板状态:\n{state_digest(prev)}\n\n"
-                f"最近窗口活动轨迹:\n{log_text}\n\n"
-                f"请判断是否有实质变化并输出 JSON。"
-            )
+            state_text=state_digest(prev)
+            due,reason=gate.due(log_text,state_text,time.monotonic(),minimum=max(30,interval),refresh=max(300,interval))
+            if not due:
+                time.sleep(5);continue
+            log("提交原因："+reason)
+            user_msg=session.prepare(state_text,log_text,time.strftime("%Y-%m-%dT%H:%M:%S"))
             raw = call_llm(cfg, user_msg)
             result = parse_llm_json(raw)
+            if not isinstance(result,dict) or type(result.get("changed")) is not bool:
+                raise ValueError("model result must include boolean changed")
+            if result["changed"] and not isinstance(result.get("state"),dict):
+                raise ValueError("changed result must include state")
             if result.get("changed") and isinstance(result.get("state"), dict):
                 st = result["state"]
                 st.setdefault("main_quests", [])
@@ -439,9 +468,13 @@ def main_loop():
                     log("内容相同，跳过写入")
             else:
                 log("无变化")
+            session.commit(raw)
+            gate.commit(log_text,state_digest(load_json(STATE,{})),time.monotonic())
+            failures=0;next_error_retry=0.
         except Exception as e:
             log(f"错误: {type(e).__name__}: {e}")
-        time.sleep(interval)
+            failures+=1;next_error_retry=time.monotonic()+min(600,interval*2**min(failures,3))
+        time.sleep(5)
 
 
 if __name__ == "__main__":

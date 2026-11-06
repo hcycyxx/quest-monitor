@@ -24,6 +24,8 @@ except ImportError:                     # 直接当脚本跑时没有包上下�
     import content_probe
 
 import paths
+from inference_control import IdleState
+import state_store
 
 ROOT = paths.PROGRAM_DIR
 LOG = paths.config("win_log.jsonl")
@@ -229,10 +231,28 @@ def main():
     last_write = 0.0
     last_content_at = 0.0
     was_idle = False
+    idle_monitor=IdleState()
+    status_at=0.;sample_at=0.;last_status=None
     while True:
         try:
             w = active_window()
+            clock=time.monotonic();idle_now=idle_seconds();sample=None
+            if capture and w and not is_self(w) and idle_now>=120 and clock-sample_at>=15:
+                sample_at=clock
+                try:
+                    image=content_probe._grab(w["hwnd"],crop_top=120)
+                    if image is not None:sample=image.convert("L").resize((48,27)).tobytes()
+                except Exception:
+                    pass
+            status=idle_monitor.observe(idle_now,(w.get("hwnd"),w.get("title")) if w else None,sample,clock)
+            resumed=last_status is True and not status["suspended"]
+            if clock-status_at>=10 or status["suspended"]!=last_status:
+                state_store._atomic_write(paths.config("activity_status.json"),{"checked_at":time.time(),**status})
+                status_at=clock;last_status=status["suspended"]
             if w and not is_self(w):
+                if resumed:
+                    last_write=write_rec(w,clock)
+                    if capture:last_content_at=request_content(w,clock)
                 key = (w["title"], w["exe"])
                 now = time.monotonic()
                 idle = idle_seconds()
