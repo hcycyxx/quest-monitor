@@ -1,0 +1,589 @@
+<div id="sidequest-preview-v10">
+  <div class="sq-stage viz-dotted-background">
+    <section class="sq-window" aria-label="SideQuest 新版布局预览">
+      <header class="sq-toolbar" aria-label="拖动此处移动窗口">
+        <span class="sq-brand">SideQuest</span>
+        <span class="sq-observer" aria-live="polite"><span class="sq-dot"></span><span data-status>观察中</span></span>
+        <div class="sq-tools">
+          <button class="sq-icon cursor-interaction" data-action="pause" aria-label="暂停观察" aria-pressed="false" data-tooltip="暂停观察"><i data-lucide="pause" aria-hidden="true"></i></button>
+          <button class="sq-icon cursor-interaction" data-action="pin" aria-label="窗口置顶" aria-pressed="true" data-tooltip="窗口置顶"><i data-lucide="pin" aria-hidden="true"></i></button>
+          <button class="sq-icon cursor-interaction" data-action="menu" aria-label="更多设置" aria-expanded="false" aria-controls="sq-menu"><i data-lucide="ellipsis" aria-hidden="true"></i></button>
+          <span class="sq-tool-divider" aria-hidden="true"></span>
+          <button class="sq-icon cursor-interaction" data-action="minimize" aria-label="最小化为窄条" data-tooltip="最小化为窄条"><i data-lucide="minus" aria-hidden="true"></i></button>
+          <button class="sq-icon cursor-interaction" data-action="close" aria-label="关闭应用" data-tooltip="关闭应用（退出）"><i data-lucide="x" aria-hidden="true"></i></button>
+        </div>
+      </header>
+      <button class="sq-mini-restore cursor-interaction" data-action="minimize" aria-label="还原任务面板" hidden><span>客户 A 报价</span><span>还原<i data-lucide="chevron-down" aria-hidden="true"></i></span></button>
+      <div id="sq-menu" class="sq-menu" hidden>
+        <button class="sq-menu-item cursor-interaction" data-action="settings"><i data-lucide="settings-2" aria-hidden="true"></i>外观与设置</button>
+        <button class="sq-menu-item cursor-interaction" data-action="dock" aria-pressed="false"><i data-lucide="panel-right" aria-hidden="true"></i><span data-dock-label>贴边自动隐藏：开启</span></button>
+        <button class="sq-menu-item cursor-interaction" data-action="dockleft"><i data-lucide="panel-left" aria-hidden="true"></i>停靠左边</button>
+        <button class="sq-menu-item cursor-interaction" data-action="dockright"><i data-lucide="panel-right" aria-hidden="true"></i>停靠右边</button>
+        <button class="sq-menu-item cursor-interaction" data-action="resetgeometry"><i data-lucide="rotate-ccw" aria-hidden="true"></i>重置窗口大小与位置</button>
+        <button class="sq-menu-item cursor-interaction" data-action="hide"><i data-lucide="minus" aria-hidden="true"></i>隐藏到托盘</button>
+      </div>
+      <div class="sq-viewport" aria-label="可滚动任务内容">
+      <div class="sq-main-view">
+        <div class="sq-focus">
+          <div class="sq-primary-row">
+            <div class="sq-ring" role="img" aria-label="任务进度为估算30至50%，圆环仅表示区间中点"><svg viewBox="0 0 64 64" aria-hidden="true"><circle class="sq-ring-track" cx="32" cy="32" r="27"/><circle class="sq-ring-fill" cx="32" cy="32" r="27" stroke-dasharray="68 170"/></svg><span>主线</span></div>
+            <div class="sq-primary-copy"><h2 data-main-title><button class="sq-title-toggle cursor-interaction" data-action="expand" aria-label="主线任务：客户 A 报价，点击收起或展开支线任务" aria-expanded="true" aria-controls="sq-task-list"><span>客户 A 报价<br>（3 个型号）</span><span data-main-chevron><i data-lucide="chevron-down" aria-hidden="true"></i></span></button></h2><div class="sq-estimate" data-estimate hidden>30–50%</div></div>
+            <button class="sq-check cursor-interaction" data-action="complete" aria-label="标记客户 A 报价完成" data-tooltip="标记完成"><i data-lucide="check" aria-hidden="true"></i></button>
+          </div>
+          <p class="sq-live" data-progress>已核对型号，待确认采购数量</p>
+          <div class="sq-task-progress sq-main-progress"><div class="sq-progress-track" data-main-bar role="progressbar" aria-label="客户 A 报价进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="40" aria-valuetext="估算30至50%"><span class="sq-progress-fill" data-main-fill style="width:30%"></span><span class="sq-progress-range" data-main-range style="left:30%;width:20%"></span></div><span class="sq-progress-label" data-main-bar-label>估算 30–50%</span></div>
+          <div class="sq-next"><div class="sq-next-label"><i data-lucide="corner-down-right" aria-hidden="true"></i>下一步建议</div><p data-next>确认客户所需数量，再更新报价。</p></div>
+          <details class="sq-steps"><summary class="cursor-interaction" aria-expanded="false" aria-controls="sq-step-content"><span>报价步骤</span><span data-step-count>1 / 3</span><i data-lucide="chevron-down" aria-hidden="true"></i></summary><div id="sq-step-content" class="sq-steps-content" hidden><div class="sq-step-list"><label><input type="checkbox" checked data-step="0">核对型号与参数</label><label><input type="checkbox" data-step="1">确认采购数量</label><label><input type="checkbox" data-step="2">更新报价草稿</label></div></div></details>
+        </div>
+        <div class="sq-observation"><i data-lucide="eye" aria-hidden="true"></i><div><span>当前活动</span><p>在产品资料中核对参数</p></div></div>
+        <div class="sq-feedback" role="status" hidden><span data-message></span><button class="sq-text-button cursor-interaction" data-action="undo" hidden>撤销</button></div>
+        <button class="sq-list-toggle cursor-interaction" data-action="expand" aria-expanded="true" aria-controls="sq-task-list"><span>支线任务 <span class="sq-count">3</span></span><span class="sq-toggle-label"><span data-list-state>收起</span><i data-lucide="chevron-down" aria-hidden="true"></i></span></button>
+        <div id="sq-task-list">
+          <article class="sq-task"><div class="sq-task-heading"><span class="sq-task-name">确认样品交期</span><span class="sq-priority">今天</span></div><p>核对库存与预计发货时间</p><div class="sq-task-progress"><div class="sq-progress-track" role="progressbar" aria-label="确认样品交期进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="30" aria-valuetext="估算20至40%"><span class="sq-progress-fill" style="width:20%"></span><span class="sq-progress-range" style="left:20%;width:20%"></span></div><span class="sq-progress-label">估算 20–40%</span></div></article>
+          <article class="sq-task"><div class="sq-task-heading"><span class="sq-task-name">整理订单资料</span><span class="sq-subtle">待办</span></div><p>补齐型号、数量及包装要求</p><div class="sq-task-progress"><div class="sq-progress-track" role="progressbar" aria-label="整理订单资料进度" aria-valuetext="待估算"></div><span class="sq-progress-label">待估算</span></div></article>
+          <article class="sq-task"><div class="sq-task-heading"><span class="sq-task-name">确认包装方案</span><span class="sq-waiting">等待回复</span></div><p>已发出确认，等待客户答复</p><div class="sq-task-progress sq-progress-waiting"><div class="sq-progress-track" role="progressbar" aria-label="确认包装方案进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="65" aria-valuetext="估算60至70%，等待回复，进度暂停"><span class="sq-progress-fill" style="width:60%"></span><span class="sq-progress-range" style="left:60%;width:10%"></span></div><span class="sq-progress-label">估算 60–70% · 进度暂停</span></div></article>
+        </div>
+        <footer class="sq-footer"><span data-updated>刚刚更新 · 示例</span><button class="sq-text-button cursor-interaction" data-action="history" aria-expanded="false">完成历史<i data-lucide="arrow-up-right" aria-hidden="true"></i></button></footer>
+        <div class="sq-history" hidden><div class="sq-section-title">完成历史</div><div class="sq-history-row"><span data-history-title>核对产品参数</span><button class="sq-text-button cursor-interaction" data-action="restore">恢复</button></div></div>
+      </div>
+      <section class="sq-settings" aria-label="外观设置" hidden>
+        <div class="sq-settings-header"><h2>外观与设置</h2><button class="sq-icon cursor-interaction" data-action="back" aria-label="返回任务"><i data-lucide="x" aria-hidden="true"></i></button></div>
+        <fieldset><legend>皮肤</legend><label><input name="sq-skin" type="radio" value="glass" checked>深蓝玻璃</label><label><input name="sq-skin" type="radio" value="transparent">轻透悬浮</label><label><input name="sq-skin" type="radio" value="journal">杂志手账</label><label><input name="sq-skin" type="radio" value="night">夜航 HUD</label></fieldset>
+        <label class="sq-font-label" for="sq-font">界面字号 <output id="sq-font-value">14</output></label><input id="sq-font" type="range" min="13" max="17" value="14">
+        <p class="sq-setting-note">预览设置仅对这里生效。</p>
+        <button class="sq-return cursor-interaction" data-action="back">返回任务</button>
+      </section>
+      </div>
+      <button class="sq-resize-handle" aria-label="调整窗口大小：拖动，或用方向键调节；Shift 加速" data-tooltip="拖动调整宽高"><i data-lucide="maximize-2" aria-hidden="true"></i></button>
+    </section>
+    <button class="sq-edge-tab" data-action="revealedge" aria-label="展开 SideQuest 贴边面板" aria-expanded="false" hidden><i data-lucide="chevron-left" aria-hidden="true"></i></button>
+    <div class="sq-hidden-state" hidden><span data-hidden-label>SideQuest 已隐藏到托盘</span><button class="sq-restore cursor-interaction" data-action="show">重新打开</button></div>
+  </div>
+  <div class="sq-caption">布局预览 · 示例任务 · 不连接真实数据</div>
+</div>
+<style>
+#sidequest-preview-v10{font-family:"Microsoft YaHei UI","Microsoft YaHei",sans-serif;--sq-bg:#14171f;--sq-hi:#232a38;--sq-fg:#f1f5fc;--sq-muted:#a8b7cc;--sq-gold:#ffd166;--sq-cyan:#7de3f4;--sq-green:#5be3a2;--sq-stroke:#38465c;--sq-size:14px;--sq-space:1;color:var(--sq-fg)}
+#sidequest-preview-v10 *{box-sizing:border-box}
+#sidequest-preview-v10 [hidden]{display:none!important}
+#sidequest-preview-v10 .sq-stage{padding:28px 8px 24px;min-height:750px;display:flex;align-items:flex-start;justify-content:center}
+#sidequest-preview-v10 .sq-window{width:336px;max-width:100%;background:var(--sq-bg);color:var(--sq-fg);border:1px solid var(--sq-stroke);border-radius:16px;position:relative;font-size:var(--sq-size);line-height:1.55}
+#sidequest-preview-v10 button{font:inherit;color:inherit;border:0;background:transparent}
+#sidequest-preview-v10 button:focus-visible,#sidequest-preview-v10 summary:focus-visible,#sidequest-preview-v10 input:focus-visible{outline:2px solid var(--sq-gold);outline-offset:3px}
+#sidequest-preview-v10 button:disabled{opacity:.5}
+#sidequest-preview-v10 .sq-toolbar{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--sq-stroke)}
+#sidequest-preview-v10 .sq-brand{font-size:calc(var(--sq-size) * 0.8571);font-weight:600;letter-spacing:.01em}
+#sidequest-preview-v10 .sq-observer{display:flex;gap:5px;align-items:center;font-size:calc(max(11px, var(--sq-size) * 0.7857));color:var(--sq-muted);white-space:nowrap}
+#sidequest-preview-v10 .sq-dot{width:5px;height:5px;border-radius:50%;background:var(--sq-green)}
+#sidequest-preview-v10 .sq-tools{display:flex;margin-left:auto;gap:2px}
+#sidequest-preview-v10 .sq-icon{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;color:var(--sq-muted);padding:5px}
+#sidequest-preview-v10 .sq-icon svg,#sidequest-preview-v10 i{width:16px;height:16px;flex-shrink:0}
+#sidequest-preview-v10 .sq-icon[aria-pressed=true]{color:var(--sq-gold)}
+#sidequest-preview-v10 button:hover{background:var(--sq-hi)}
+#sidequest-preview-v10 .sq-focus{padding:calc(20px * var(--sq-space)) 18px 0}
+#sidequest-preview-v10 .sq-primary-row{display:flex;gap:12px;align-items:center}
+#sidequest-preview-v10 .sq-primary-copy{flex:1;min-width:0}
+#sidequest-preview-v10 h2{font:700 calc(var(--sq-size) * 1.0714)/1.6 "Microsoft YaHei UI","Microsoft YaHei",sans-serif;margin:0;overflow-wrap:anywhere;color:var(--sq-fg)}
+#sidequest-preview-v10 .sq-estimate{font-size:calc(var(--sq-size) * 0.9286);color:var(--sq-gold);margin-top:3px;font-variant-numeric:tabular-nums}
+#sidequest-preview-v10 .sq-ring{width:56px;height:56px;position:relative;flex:0 0 56px;display:grid;place-items:center}
+#sidequest-preview-v10 .sq-ring svg{position:absolute;width:56px;height:56px;inset:0;transform:rotate(-90deg);fill:none;stroke-width:3}
+#sidequest-preview-v10 .sq-ring-track{stroke:var(--sq-hi)}
+#sidequest-preview-v10 .sq-ring-fill{stroke:var(--sq-gold);stroke-linecap:round}
+#sidequest-preview-v10 .sq-ring span{font-size:calc(max(11px, var(--sq-size) * 0.7857));color:var(--sq-muted)}
+#sidequest-preview-v10 .sq-check{width:28px;height:28px;border:1px solid var(--sq-stroke);border-radius:50%;display:grid;place-items:center;padding:5px;color:var(--sq-muted);flex-shrink:0}
+#sidequest-preview-v10 .sq-check svg{width:14px;height:14px}
+#sidequest-preview-v10 p{margin:0;overflow-wrap:anywhere}
+#sidequest-preview-v10 .sq-live{font-size:calc(var(--sq-size) * 0.8571);color:var(--sq-muted);padding:12px 0 16px}
+#sidequest-preview-v10 .sq-next{background:var(--sq-hi);padding:12px;border-radius:8px}
+#sidequest-preview-v10 .sq-next-label{display:flex;gap:6px;align-items:center;color:var(--sq-gold);font-size:calc(max(11px, var(--sq-size) * 0.7857));margin-bottom:5px}
+#sidequest-preview-v10 .sq-next-label svg{width:13px;height:13px}
+#sidequest-preview-v10 .sq-next p{font-size:calc(var(--sq-size) * 0.9286);line-height:1.7}
+#sidequest-preview-v10 .sq-steps{padding:14px 0 12px}
+#sidequest-preview-v10 summary{display:flex;align-items:center;gap:8px;font-size:calc(var(--sq-size) * 0.8571);color:var(--sq-muted);list-style:none}
+#sidequest-preview-v10 summary::-webkit-details-marker{display:none}
+#sidequest-preview-v10 summary span:nth-child(2){margin-left:auto;font-variant-numeric:tabular-nums}
+#sidequest-preview-v10 summary svg{width:13px;height:13px;transition:transform .18s ease-out}
+#sidequest-preview-v10 details[open] summary svg{transform:rotate(180deg)}
+#sidequest-preview-v10 .sq-step-list{display:grid;gap:10px;padding-top:14px;font-size:calc(var(--sq-size) * 0.8571)}
+#sidequest-preview-v10 label{display:flex;gap:9px;align-items:center}
+#sidequest-preview-v10 input{accent-color:var(--sq-gold)}
+#sidequest-preview-v10 input[type=checkbox],#sidequest-preview-v10 input[type=radio]{width:15px;height:15px;flex-shrink:0;margin:0}
+#sidequest-preview-v10 .sq-observation{margin:0 18px;display:flex;gap:8px;padding:12px 0 15px;border-top:1px solid var(--sq-stroke);font-size:calc(var(--sq-size) * 0.8571);color:var(--sq-muted)}
+#sidequest-preview-v10 .sq-observation>svg{margin-top:3px;width:14px;height:14px;flex-shrink:0}
+#sidequest-preview-v10 .sq-observation span{font-size:calc(max(11px, var(--sq-size) * 0.7857))}
+#sidequest-preview-v10 .sq-observation p{margin-top:3px}
+#sidequest-preview-v10 .sq-list-toggle{padding:12px 18px;display:flex;width:100%;align-items:center;justify-content:space-between;border-top:1px solid var(--sq-stroke);font-size:calc(var(--sq-size) * 0.8571);text-align:left}
+#sidequest-preview-v10 .sq-count{margin-left:5px;color:var(--sq-muted)}
+#sidequest-preview-v10 .sq-toggle-label{display:flex;gap:5px;align-items:center;font-size:calc(max(11px, var(--sq-size) * 0.7857));color:var(--sq-muted)}
+#sidequest-preview-v10 .sq-toggle-label svg{width:12px;height:12px}
+#sidequest-preview-v10 .sq-task{padding:calc(12px * var(--sq-space)) 0;margin:0 18px;border-top:1px solid var(--sq-stroke)}
+#sidequest-preview-v10 .sq-task-heading{display:flex;align-items:baseline;gap:10px}
+#sidequest-preview-v10 .sq-task-name{font-size:calc(var(--sq-size) * 0.9286);flex:1;overflow-wrap:anywhere}
+#sidequest-preview-v10 .sq-priority{font-size:calc(max(11px, var(--sq-size) * 0.7857));color:var(--sq-gold)}
+#sidequest-preview-v10 .sq-subtle{font-size:calc(max(11px, var(--sq-size) * 0.7857));color:var(--sq-muted)}
+#sidequest-preview-v10 .sq-waiting{font-size:calc(max(11px, var(--sq-size) * 0.7857));color:var(--sq-cyan);white-space:nowrap}
+#sidequest-preview-v10 .sq-task p{margin-top:4px;font-size:calc(max(11px, var(--sq-size) * 0.7857));color:var(--sq-muted)}
+#sidequest-preview-v10 .sq-footer{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--sq-stroke);font-size:calc(max(11px, var(--sq-size) * 0.7857));color:var(--sq-muted)}
+#sidequest-preview-v10 .sq-text-button{display:inline-flex;align-items:center;gap:4px;border-radius:4px;padding:4px;color:var(--sq-gold);font-size:calc(max(11px, var(--sq-size) * 0.7857))}
+#sidequest-preview-v10 .sq-text-button svg{width:12px;height:12px}
+#sidequest-preview-v10 .sq-menu{position:absolute;top:49px;right:10px;z-index:5;padding:6px;background:var(--sq-hi);border:1px solid var(--sq-stroke);border-radius:10px;min-width:190px}
+#sidequest-preview-v10 .sq-menu-item{display:flex;gap:10px;align-items:center;width:100%;text-align:left;padding:10px;border-radius:6px;font-size:calc(var(--sq-size) * 0.8571)}
+#sidequest-preview-v10 .sq-menu-item svg{width:14px;height:14px}
+#sidequest-preview-v10 .sq-menu-item:hover{background:var(--sq-bg)}
+#sidequest-preview-v10 .sq-feedback{margin:0 18px 12px;padding:10px 0;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:calc(var(--sq-size) * 0.8571);color:var(--sq-green)}
+#sidequest-preview-v10 .sq-history{padding:12px 18px;border-top:1px solid var(--sq-stroke);font-size:calc(var(--sq-size) * 0.8571)}
+#sidequest-preview-v10 .sq-section-title{color:var(--sq-muted);font-size:calc(max(11px, var(--sq-size) * 0.7857));margin-bottom:8px}
+#sidequest-preview-v10 .sq-history-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#sidequest-preview-v10 .sq-settings{padding:18px}
+#sidequest-preview-v10 .sq-settings-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+#sidequest-preview-v10 fieldset{margin:0 0 24px;padding:0;border:0;display:grid;gap:15px}
+#sidequest-preview-v10 legend{font-size:calc(var(--sq-size) * 0.8571);color:var(--sq-muted);margin-bottom:16px}
+#sidequest-preview-v10 .sq-font-label{display:flex;justify-content:space-between;font-size:calc(var(--sq-size) * 0.8571);margin-bottom:12px}
+#sidequest-preview-v10 input[type=range]{width:100%}
+#sidequest-preview-v10 .sq-setting-note{font-size:calc(max(11px, var(--sq-size) * 0.7857));color:var(--sq-muted);padding-top:10px}
+#sidequest-preview-v10 .sq-return{margin-top:24px;background:var(--sq-hi);padding:9px 15px;border-radius:6px;font-size:calc(var(--sq-size) * 0.8571)}
+#sidequest-preview-v10 .sq-hidden-state{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;background:var(--sq-bg);color:var(--sq-fg);padding:18px;border-radius:12px;font-size:calc(var(--sq-size) * 0.9286)}
+#sidequest-preview-v10 .sq-restore{background:var(--sq-hi);border-radius:6px;padding:8px 12px;color:var(--sq-gold)}
+#sidequest-preview-v10 .sq-caption{font-size:calc(var(--sq-size) * 0.8571);color:light-dark(#526174,#a8b7cc);text-align:center;margin-top:10px}
+@media(pointer:coarse){#sidequest-preview-v10 .sq-icon,#sidequest-preview-v10 .sq-check{min-width:40px;min-height:40px}#sidequest-preview-v10 .sq-toolbar{flex-wrap:wrap}#sidequest-preview-v10 .sq-observer{margin-left:auto}#sidequest-preview-v10 .sq-tools{gap:4px}#sidequest-preview-v10 summary,#sidequest-preview-v10 label,#sidequest-preview-v10 .sq-text-button{min-height:40px}}
+@media(prefers-reduced-motion:reduce){#sidequest-preview-v10 summary svg{transition:none}}
+
+#sidequest-preview-v10 .sq-task-progress{display:grid;gap:6px;margin-top:10px}
+#sidequest-preview-v10 .sq-progress-track{position:relative;width:100%;height:4px;border-radius:3px;background:var(--sq-hi);overflow:hidden}
+#sidequest-preview-v10 .sq-progress-fill,#sidequest-preview-v10 .sq-progress-range{position:absolute;height:100%;top:0;background:var(--sq-gold)}
+#sidequest-preview-v10 .sq-progress-fill{left:0}
+#sidequest-preview-v10 .sq-progress-range{opacity:.4}
+#sidequest-preview-v10 .sq-progress-label{font-size:max(11px,calc(var(--sq-size) * .7857));color:var(--sq-muted);text-align:right;font-variant-numeric:tabular-nums}
+#sidequest-preview-v10 .sq-progress-waiting .sq-progress-fill,#sidequest-preview-v10 .sq-progress-waiting .sq-progress-range{background:var(--sq-cyan)}
+#sidequest-preview-v10 .sq-main-progress{margin-top:0;margin-bottom:16px}
+#sidequest-preview-v10 .sq-live{padding-bottom:10px}
+#sidequest-preview-v10 .sq-stage{min-height:860px}
+
+#sidequest-preview-v10 .sq-window{font-weight:600}
+#sidequest-preview-v10 .sq-task-name{font-weight:700}
+#sidequest-preview-v10 .sq-next p,#sidequest-preview-v10 .sq-progress-label{font-weight:600}
+
+#sidequest-preview-v10 .sq-toolbar{gap:6px;padding-left:10px;padding-right:10px}
+#sidequest-preview-v10 .sq-tools{gap:0}
+#sidequest-preview-v10 .sq-title-toggle{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;padding:0;text-align:left;font:inherit;border-radius:4px}
+#sidequest-preview-v10 .sq-title-toggle [data-main-chevron]{display:flex;color:var(--sq-muted);flex-shrink:0}
+#sidequest-preview-v10 .sq-title-toggle svg{width:12px;height:12px}
+#sidequest-preview-v10 .sq-mini-restore{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:10px 14px;font-size:12px;text-align:left}
+#sidequest-preview-v10 .sq-mini-restore>span:last-child{display:flex;align-items:center;gap:5px;color:var(--sq-muted)}
+#sidequest-preview-v10 .sq-mini-restore svg{width:12px;height:12px}
+
+/* V6: shared rhythm, restrained emphasis, consistent feedback. */
+#sidequest-preview-v10 .sq-window{font-weight:500;border-color:color-mix(in srgb,var(--sq-muted) 25%,var(--sq-bg));border-radius:14px}
+#sidequest-preview-v10 .sq-toolbar{padding:10px;gap:6px;border-bottom-color:color-mix(in srgb,var(--sq-muted) 15%,var(--sq-bg))}
+#sidequest-preview-v10 .sq-brand{font-weight:600;letter-spacing:.015em}
+#sidequest-preview-v10 .sq-observer{font-weight:500}
+#sidequest-preview-v10 .sq-tools{align-items:center;gap:0}
+#sidequest-preview-v10 .sq-tool-divider{height:13px;width:1px;margin:0 4px;background:color-mix(in srgb,var(--sq-muted) 25%,var(--sq-bg))}
+#sidequest-preview-v10 .sq-icon{color:var(--sq-muted);border-radius:5px;transition:background-color 140ms ease-out,color 140ms ease-out,transform 100ms ease-out}
+#sidequest-preview-v10 .sq-icon svg{width:14px;height:14px;stroke-width:1.7}
+#sidequest-preview-v10 .sq-icon[data-action=close]:hover{color:#fff;background:#ad3e43}
+#sidequest-preview-v10 button:active:not(:disabled){transform:translateY(1px)}
+#sidequest-preview-v10 button:disabled{transform:none}
+#sidequest-preview-v10 button:hover{background:color-mix(in srgb,var(--sq-muted) 9%,var(--sq-bg))}
+#sidequest-preview-v10 button:focus-visible,#sidequest-preview-v10 summary:focus-visible{outline-offset:2px}
+#sidequest-preview-v10 .sq-focus{padding:calc(22px * var(--sq-space)) 18px 0}
+#sidequest-preview-v10 .sq-primary-row{gap:12px}
+#sidequest-preview-v10 .sq-primary-copy{min-width:0}
+#sidequest-preview-v10 h2{font-size:calc(var(--sq-size) * 1.1429);line-height:1.55;font-weight:700}
+#sidequest-preview-v10 .sq-ring{width:44px;height:44px;flex-basis:44px}
+#sidequest-preview-v10 .sq-ring svg{width:44px;height:44px;stroke-width:2.6}
+#sidequest-preview-v10 .sq-ring-fill{stroke:color-mix(in srgb,var(--sq-gold) 65%,var(--sq-muted))}
+#sidequest-preview-v10 .sq-ring span{font-weight:500}
+#sidequest-preview-v10 .sq-title-toggle{gap:8px;padding:3px 0}
+#sidequest-preview-v10 [data-main-chevron]{transition:transform 200ms cubic-bezier(.2,.8,.2,1)}
+#sidequest-preview-v10 .sq-title-toggle[aria-expanded=true] [data-main-chevron]{transform:rotate(180deg)}
+#sidequest-preview-v10 .sq-check{border-color:color-mix(in srgb,var(--sq-muted) 40%,var(--sq-bg));transition:background-color 140ms ease-out,color 140ms ease-out}
+#sidequest-preview-v10 .sq-check:disabled{opacity:1;color:var(--sq-green);background:color-mix(in srgb,var(--sq-green) 10%,var(--sq-bg));border-color:transparent}
+#sidequest-preview-v10 .sq-live{padding:12px 0 10px;font-weight:500;line-height:1.65}
+#sidequest-preview-v10 .sq-task-progress{gap:7px;margin-top:12px}
+#sidequest-preview-v10 .sq-progress-track{height:4px;background:color-mix(in srgb,var(--sq-muted) 13%,var(--sq-bg))}
+#sidequest-preview-v10 .sq-progress-fill,#sidequest-preview-v10 .sq-progress-range{transition:width 220ms ease-out,background-color 160ms ease-out}
+#sidequest-preview-v10 .sq-task .sq-progress-fill,#sidequest-preview-v10 .sq-task .sq-progress-range{background:var(--sq-muted)}
+#sidequest-preview-v10 .sq-task .sq-progress-waiting .sq-progress-fill,#sidequest-preview-v10 .sq-task .sq-progress-waiting .sq-progress-range{background:var(--sq-cyan)}
+#sidequest-preview-v10 .sq-progress-label{font-weight:500;line-height:1.4}
+#sidequest-preview-v10 .sq-main-progress{margin:0 0 18px}
+#sidequest-preview-v10 .sq-next{padding:12px;border-radius:8px;background:color-mix(in srgb,var(--sq-hi) 75%,var(--sq-bg))}
+#sidequest-preview-v10 .sq-next-label{color:var(--sq-muted);font-weight:500;margin-bottom:6px}
+#sidequest-preview-v10 .sq-next-label svg{color:var(--sq-gold);stroke-width:1.7}
+#sidequest-preview-v10 .sq-next p{font-weight:600;line-height:1.75}
+#sidequest-preview-v10 .sq-steps{padding:16px 0}
+#sidequest-preview-v10 .sq-step-list{gap:12px}
+#sidequest-preview-v10 .sq-observation{padding:14px 0 16px;border-color:color-mix(in srgb,var(--sq-muted) 15%,var(--sq-bg))}
+#sidequest-preview-v10 .sq-observation p{margin-top:4px}
+#sidequest-preview-v10 .sq-list-toggle{padding:13px 18px;font-weight:600;border-color:color-mix(in srgb,var(--sq-muted) 15%,var(--sq-bg))}
+#sidequest-preview-v10 .sq-toggle-label{font-weight:500}
+#sidequest-preview-v10 .sq-toggle-label svg{transition:transform 200ms cubic-bezier(.2,.8,.2,1)}
+#sidequest-preview-v10 .sq-list-toggle[aria-expanded=true] .sq-toggle-label svg{transform:rotate(180deg)}
+#sidequest-preview-v10 .sq-task{padding:calc(15px * var(--sq-space)) 0;border-color:color-mix(in srgb,var(--sq-muted) 15%,var(--sq-bg))}
+#sidequest-preview-v10 .sq-task-name{font-weight:600;line-height:1.55}
+#sidequest-preview-v10 .sq-task p{margin-top:5px;font-weight:500;line-height:1.6}
+#sidequest-preview-v10 .sq-priority,#sidequest-preview-v10 .sq-subtle,#sidequest-preview-v10 .sq-waiting{font-weight:500}
+#sidequest-preview-v10 .sq-priority{color:var(--sq-muted)}
+#sidequest-preview-v10 .sq-footer{padding:12px 14px;font-weight:500;border-color:color-mix(in srgb,var(--sq-muted) 15%,var(--sq-bg))}
+#sidequest-preview-v10 .sq-text-button{font-weight:600;transition:background-color 140ms ease-out}
+#sidequest-preview-v10 .sq-feedback{padding:10px 0 12px;margin-bottom:0;font-weight:600}
+#sidequest-preview-v10 input{caret-color:var(--sq-gold)}
+#sidequest-preview-v10 .sq-window ::selection{background:var(--sq-gold);color:var(--sq-bg)}
+@media(prefers-reduced-motion:reduce){#sidequest-preview-v10 .sq-window *{transition:none!important}#sidequest-preview-v10 button:active:not(:disabled){transform:none}}
+
+/* V7: native-feeling movement, a bounded reading viewport and damped reveal. */
+#sidequest-preview-v10 .sq-stage{position:relative;height:780px;min-height:780px;padding:0;display:block;overflow:hidden}
+#sidequest-preview-v10 .sq-window{position:absolute;top:24px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;max-height:620px}
+#sidequest-preview-v10 .sq-toolbar{flex-shrink:0;touch-action:none;cursor:grab;user-select:none;border-radius:14px 14px 0 0}
+#sidequest-preview-v10.sq-manipulating .sq-toolbar{cursor:grabbing}
+#sidequest-preview-v10.sq-manipulating{user-select:none}
+#sidequest-preview-v10 .sq-viewport{min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:auto;touch-action:pan-y;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--sq-muted) 42%,transparent) transparent;border-radius:0 0 14px 14px}
+#sidequest-preview-v10 .sq-viewport::-webkit-scrollbar{width:6px}
+#sidequest-preview-v10 .sq-viewport::-webkit-scrollbar-track{background:transparent}
+#sidequest-preview-v10 .sq-viewport::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--sq-muted) 34%,transparent);border-radius:6px}
+#sidequest-preview-v10 .sq-viewport::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--sq-muted) 65%,transparent)}
+#sidequest-preview-v10 .sq-footer{padding-right:30px}
+#sidequest-preview-v10 .sq-resize-handle{position:absolute;right:1px;bottom:1px;z-index:7;display:grid;place-items:center;width:20px;height:20px;padding:4px;border-radius:0 0 12px 0;cursor:nwse-resize;touch-action:none;color:var(--sq-muted);background:var(--sq-bg)}
+#sidequest-preview-v10 .sq-resize-handle svg{width:11px;height:11px;opacity:.7}
+#sidequest-preview-v10 .sq-resize-handle:active{transform:none}
+#sidequest-preview-v10 [data-main-chevron],#sidequest-preview-v10 .sq-toggle-label svg,#sidequest-preview-v10 summary svg{transition:transform 650ms cubic-bezier(.16,1,.3,1)}
+#sidequest-preview-v10 .sq-hidden-state{position:absolute;left:12px;right:12px;top:24px;margin:auto;max-width:380px}
+@media(pointer:coarse){#sidequest-preview-v10 .sq-resize-handle{width:32px;height:32px}#sidequest-preview-v10 .sq-footer{padding-right:40px}}
+@media(prefers-reduced-motion:reduce){#sidequest-preview-v10 [data-main-chevron],#sidequest-preview-v10 .sq-toggle-label svg,#sidequest-preview-v10 summary svg{transition:none}}
+
+/* V8: edge reveal uses the same decelerating motion language. */
+#sidequest-preview-v10 .sq-window{transition:transform 650ms cubic-bezier(.16,1,.3,1)}
+#sidequest-preview-v10.sq-manipulating .sq-window{transition:none}
+#sidequest-preview-v10 .sq-window.sq-edge-hidden{pointer-events:none}
+#sidequest-preview-v10 .sq-edge-tab{position:absolute;z-index:10;width:12px;height:76px;display:grid;place-items:center;padding:0;background:var(--sq-hi);color:var(--sq-gold);border:1px solid color-mix(in srgb,var(--sq-muted) 30%,var(--sq-bg));border-radius:5px;touch-action:manipulation}
+#sidequest-preview-v10 .sq-edge-tab svg{width:11px;height:11px;stroke-width:1.7}
+#sidequest-preview-v10 .sq-edge-tab:hover{background:var(--sq-hi)}
+#sidequest-preview-v10 .sq-edge-tab:active{transform:none}
+@media(pointer:coarse){#sidequest-preview-v10 .sq-edge-tab{width:28px}}
+@media(prefers-reduced-motion:reduce){#sidequest-preview-v10 .sq-window{transition:none}}
+
+/* V10: the quote steps now use the same measured, interruptible disclosure. */
+#sidequest-preview-v10 .sq-steps-content{display:flow-root}
+#sidequest-preview-v10 .sq-steps[open] summary svg{transform:none}
+#sidequest-preview-v10 .sq-steps summary[aria-expanded=true] svg{transform:rotate(180deg)}
+#sidequest-preview-v10 .sq-steps summary{touch-action:manipulation}
+</style>
+<script>
+(function(){
+  const root=document.getElementById('sidequest-preview-v10');
+  const q=(s)=>root.querySelector(s);
+  const saved=window.openai?.widgetState?.privateContent||{};
+  const state={skin:saved.skin||'glass',font:14,density:1,paused:false,pinned:true,expanded:saved.expanded!==false,stepsOpen:saved.stepsOpen===true,done:false,docked:true,edgeSide:null,edgeHidden:false,hidden:false,minimized:false,closed:false,settings:false,width:336,height:620,x:null,y:24};
+  const skins={glass:['#14171f','#232a38','#f1f5fc','#a8b7cc','#ffd166','#7de3f4','#5be3a2','#38465c'],transparent:['#182330','#2b3c4e','#ffffff','#cfdaea','#ffe1a0','#b3efff','#92efc3','#506479'],journal:['#f4efe3','#eae1ce','#342e29','#6b6054','#96623b','#396c73','#3c7052','#c6b9a2'],night:['#101b25','#1c2e3c','#edf8ff','#abc4d6','#8ae8ff','#c0b3ff','#68edb8','#3e566a']};
+  const names=['bg','hi','fg','muted','gold','cyan','green','stroke'];
+  function remember(){if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{preview:'SideQuest 布局预览',skin:state.skin},privateContent:{skin:state.skin,expanded:state.expanded,stepsOpen:state.stepsOpen,width:state.width,height:state.height,x:state.x,y:state.y,edgeSide:state.edgeSide,autoHide:state.docked}}).catch(()=>{});}
+  function icons(){if(globalThis.lucide)lucide.createIcons({attrs:{width:16,height:16}});}
+
+
+  let listTarget=null,springFrame=0,springX=0,springVelocity=0,springTime=0;
+  const reduceMotion=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function syncTaskList(){
+    const list=q('#sq-task-list');
+    if(listTarget===state.expanded)return;
+    const first=listTarget===null;
+    listTarget=state.expanded;
+    if(springFrame){cancelAnimationFrame(springFrame);springFrame=0;}
+    if(first||reduceMotion()){
+      list.hidden=!state.expanded;list.style.height='';list.style.overflow='';springVelocity=0;
+      list.inert=!state.expanded;list.setAttribute('aria-hidden',String(!state.expanded));return;
+    }
+    const closed=list.hidden;
+    springX=closed?0:list.getBoundingClientRect().height;
+    if(closed)springVelocity=0;
+    list.hidden=false;list.style.height=springX+'px';list.style.overflow='hidden';
+    list.inert=!state.expanded;list.setAttribute('aria-hidden',String(!state.expanded));
+    const innerHeight=list.scrollHeight;
+    const destination=state.expanded?innerHeight:0;
+    springTime=performance.now();
+    function frame(now){
+      const dt=Math.min((now-springTime)/1000,.04);springTime=now;
+      const omega=10.5;
+      const displacement=springX-destination;
+      const coefficient=springVelocity+omega*displacement;
+      const decay=Math.exp(-omega*dt);
+      springX=destination+(displacement+coefficient*dt)*decay;
+      springVelocity=(springVelocity-omega*coefficient*dt)*decay;
+      if(springX<0){springX=0;springVelocity=0;}
+      list.style.height=springX+'px';
+      if(Math.abs(springX-destination)<.4&&Math.abs(springVelocity)<4){
+        springFrame=0;springVelocity=0;list.hidden=!state.expanded;list.style.height='';list.style.overflow='';return;
+      }
+      springFrame=requestAnimationFrame(frame);
+    }
+    springFrame=requestAnimationFrame(frame);
+  }
+  function render(){
+    const colors=skins[state.skin]||skins.glass;
+    names.forEach((n,i)=>root.style.setProperty('--sq-'+n,colors[i]));
+    root.style.setProperty('--sq-size',state.font+'px');root.style.setProperty('--sq-space',state.density);
+    q('[data-status]').textContent=state.paused?'已暂停':'观察中';
+    q('.sq-dot').style.background=state.paused?'var(--sq-gold)':'var(--sq-green)';
+    const pause=q('[data-action=pause]');pause.setAttribute('aria-pressed',String(state.paused));pause.setAttribute('aria-label',state.paused?'继续观察':'暂停观察');pause.setAttribute('data-tooltip',state.paused?'继续观察':'暂停观察');pause.innerHTML='<i data-lucide="'+(state.paused?'play':'pause')+'" aria-hidden="true"></i>';
+    q('[data-action=pin]').setAttribute('aria-pressed',String(state.pinned));
+    syncTaskList();
+    root.querySelectorAll('[data-action=expand]').forEach(el=>el.setAttribute('aria-expanded',String(state.expanded)));q('[data-list-state]').textContent=state.expanded?'收起':'展开';
+    q('[data-estimate]').textContent=state.done?'已确认完成':'30–50%';
+    q('[data-progress]').textContent=state.done?'此任务已移入完成历史':'已核对型号，待确认采购数量';
+    q('[data-next]').textContent=state.done?'接着核对样品库存与预计发货时间。':'确认客户所需数量，再更新报价。';
+    q('.sq-ring-fill').setAttribute('stroke-dasharray',state.done?'170 170':'68 170');
+    q('.sq-ring').setAttribute('aria-label',state.done?'用户已确认任务完成':'任务进度为估算30至50%，圆环仅表示区间中点');
+    q('.sq-ring span').textContent=state.done?'完成':'主线';
+    q('[data-action=complete]').disabled=state.done;
+    q('[data-main-fill]').style.width=state.done?'100%':'30%';q('[data-main-fill]').style.background=state.done?'var(--sq-green)':'var(--sq-gold)';q('[data-main-range]').hidden=state.done;q('[data-main-bar]').setAttribute('aria-valuenow',state.done?'100':'40');q('[data-main-bar]').setAttribute('aria-valuetext',state.done?'用户已确认完成':'估算30至50%');q('[data-main-bar-label]').textContent=state.done?'100% · 已确认完成':'估算 30–50%';
+    q('.sq-window').hidden=state.hidden||state.closed;q('.sq-hidden-state').hidden=!(state.hidden||state.closed);
+    q('[data-hidden-label]').textContent=state.closed?'SideQuest 已关闭（预览）':'SideQuest 已隐藏到托盘（预览）';
+    q('[data-action=show]').textContent=state.closed?'重新启动':'重新打开';
+    q('.sq-main-view').hidden=state.minimized||state.settings;
+    q('.sq-settings').hidden=state.minimized||!state.settings;
+    q('.sq-mini-restore').hidden=!state.minimized;
+    const minButton=q('.sq-tools [data-action=minimize]');minButton.setAttribute('aria-label',state.minimized?'还原任务面板':'最小化为窄条');minButton.setAttribute('data-tooltip',state.minimized?'还原任务面板':'最小化为窄条');
+    minButton.innerHTML='<i data-lucide="'+(state.minimized?'maximize-2':'minus')+'" aria-hidden="true"></i>';
+    q('#sq-font').value=state.font;q('#sq-font-value').textContent=state.font;
+    root.querySelectorAll('[name=sq-skin]').forEach(el=>el.checked=el.value===state.skin);
+    q('[data-action=dock]').setAttribute('aria-pressed',String(state.docked));q('[data-dock-label]').textContent=state.docked?'贴边自动隐藏：开启':'贴边自动隐藏：关闭';
+    applyGeometry();
+    icons();
+  }
+  function notice(text,undo=false){q('.sq-feedback').hidden=false;q('[data-message]').textContent=text;q('[data-action=undo]').hidden=!undo;}
+  function closeMenu(){q('#sq-menu').hidden=true;q('[data-action=menu]').setAttribute('aria-expanded','false');}
+  root.addEventListener('click',e=>{
+    const b=e.target.closest('[data-action]');if(!b)return;
+    switch(b.dataset.action){
+      case 'pause':state.paused=!state.paused;break;
+      case 'pin':state.pinned=!state.pinned;notice(state.pinned?'窗口置顶已开启（预览）':'窗口置顶已关闭（预览）');break;
+      case 'menu':q('#sq-menu').hidden=!q('#sq-menu').hidden;b.setAttribute('aria-expanded',String(!q('#sq-menu').hidden));break;
+      case 'expand':stopScroll();state.expanded=!state.expanded;break;
+      case 'complete':state.done=true;notice('已标记完成，可撤销',true);q('[data-history-title]').textContent='客户 A 报价（3 个型号）';break;
+      case 'undo':state.done=false;notice('已恢复为进行中');q('[data-history-title]').textContent='核对产品参数';break;
+      case 'history':q('.sq-history').hidden=!q('.sq-history').hidden;b.setAttribute('aria-expanded',String(!q('.sq-history').hidden));break;
+      case 'restore':if(state.done){state.done=false;q('[data-history-title]').textContent='核对产品参数';notice('客户 A 报价已恢复为进行中');}else{notice('“核对产品参数”已恢复（预览）');q('.sq-history').hidden=true;}break;
+      case 'settings':closeMenu();state.settings=true;state.minimized=false;break;
+      case 'back':state.settings=false;break;
+      case 'dock':state.docked=!state.docked;closeMenu();if(!state.docked)revealEdge();else scheduleEdgeHide();notice(state.docked?'贴边自动隐藏已开启':'贴边自动隐藏已关闭，面板保持展开');break;
+      case 'dockleft':dockTo('left');closeMenu();break;
+      case 'dockright':dockTo('right');closeMenu();break;
+      case 'revealedge':revealEdge();break;
+      case 'hide':state.hidden=true;closeMenu();break;
+      case 'show':revealEdge();if(state.closed)state.paused=false;state.hidden=false;state.closed=false;state.minimized=false;state.settings=false;break;
+      case 'minimize':state.minimized=!state.minimized;closeMenu();break;
+      case 'close':state.closed=true;state.paused=true;state.settings=false;closeMenu();break;
+      case 'resetgeometry':cancelEdgeHide();state.edgeSide=null;state.edgeHidden=false;state.width=336;state.height=620;state.x=null;state.y=24;closeMenu();break;
+    }
+    render();remember();if(!state.edgeHidden)scheduleEdgeHide();
+  });
+  root.addEventListener('change',e=>{if(e.target.name==='sq-skin'){state.skin=e.target.value;render();remember();}if(e.target.matches('[data-step]')){const n=root.querySelectorAll('[data-step]:checked').length;q('[data-step-count]').textContent=n+' / 3';if(n===3)notice('步骤已勾完；核对后可标记任务完成');}});
+  q('#sq-font').addEventListener('input',e=>{state.font=Number(e.target.value);render();});
+  root.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMenu();state.settings=false;render();}});
+  root.addEventListener('click',e=>{if(!e.target.closest('.sq-menu')&&!e.target.closest('[data-action=menu]'))closeMenu();});
+  window.addEventListener('openai:set_globals',e=>{const v=e.detail?.globals?.widgetState?.privateContent;if(v){if(skins[v.skin])state.skin=v.skin;if(typeof v.expanded==='boolean')state.expanded=v.expanded;render();}});
+
+  const stage=q('.sq-stage'),win=q('.sq-window'),viewport=q('.sq-viewport'),toolbar=q('.sq-toolbar'),grip=q('.sq-resize-handle');
+  let gesture=null,scrollFrame=0,scrollTarget=0,scrollTime=0,edgeTimer=0,keyboardMode=false;
+  let pointerX=-1,pointerY=-1;
+
+  const edgeTab=q('.sq-edge-tab');
+  function cancelEdgeHide(){if(edgeTimer)clearTimeout(edgeTimer);edgeTimer=0;}
+  function pointerOverWindow(){
+    const rect=win.getBoundingClientRect();
+    return pointerX>=rect.left&&pointerX<=rect.right&&pointerY>=rect.top&&pointerY<=rect.bottom;
+  }
+  function edgeActive(){return !!state.edgeSide&&state.docked&&!state.hidden&&!state.closed;}
+  function updateEdge(){
+    if(!edgeActive())state.edgeHidden=false;
+    let shift=0;
+    if(state.edgeHidden)shift=state.edgeSide==='left'?-(state.width+state.x+8):stage.clientWidth-state.x+8;
+    win.style.transform='translateX('+shift+'px)';
+    win.inert=state.edgeHidden;win.setAttribute('aria-hidden',String(state.edgeHidden));
+    win.classList.toggle('sq-edge-hidden',state.edgeHidden);
+    edgeTab.hidden=!edgeActive()||!state.edgeHidden;
+    edgeTab.style.top=Math.min(state.y+28,stage.clientHeight-90)+'px';
+    edgeTab.style.left=state.edgeSide==='left'?'0px':'auto';edgeTab.style.right=state.edgeSide==='right'?'0px':'auto';
+    edgeTab.setAttribute('aria-expanded',String(!state.edgeHidden));
+    const icon=edgeTab.querySelector('svg');
+    if(icon)icon.style.transform=state.edgeSide==='left'?'rotate(180deg)':'';
+  }
+  function revealEdge(){cancelEdgeHide();state.edgeHidden=false;updateEdge();}
+  function scheduleEdgeHide(){
+    cancelEdgeHide();
+    if(!edgeActive()||state.edgeHidden)return;
+    edgeTimer=setTimeout(()=>{
+      edgeTimer=0;
+      if(!edgeActive()||gesture||pointerOverWindow())return;
+      const focus=document.activeElement;
+      if(state.settings||!q('#sq-menu').hidden||scrollFrame||(keyboardMode&&win.contains(focus))||(win.contains(focus)&&focus.matches('input,textarea,select')))return;
+      stopScroll();state.edgeHidden=true;updateEdge();
+    },750);
+  }
+  function dockTo(side){
+    cancelEdgeHide();state.edgeSide=side;state.edgeHidden=false;applyGeometry();scheduleEdgeHide();remember();
+  }
+  win.addEventListener('pointerenter',()=>revealEdge());
+  win.addEventListener('pointerleave',scheduleEdgeHide);
+  stage.addEventListener('pointermove',e=>{
+    pointerX=e.clientX;pointerY=e.clientY;
+    if(!edgeActive()||e.pointerType!=='mouse')return;
+    const rect=stage.getBoundingClientRect();
+    const x=e.clientX-rect.left,y=e.clientY-rect.top;
+    const nearEdge=(state.edgeSide==='left'?x<=22:x>=rect.width-22)&&y>=state.y+12&&y<=state.y+120;
+    if(nearEdge){revealEdge();return;}
+    if(!state.edgeHidden){if(pointerOverWindow())cancelEdgeHide();else if(!edgeTimer)scheduleEdgeHide();}
+  });
+  stage.addEventListener('pointerleave',()=>{pointerX=-1;pointerY=-1;scheduleEdgeHide();});
+  edgeTab.addEventListener('pointerenter',()=>revealEdge());
+  edgeTab.addEventListener('focus',()=>{revealEdge();q('[data-action=menu]').focus({preventScroll:true});});
+  root.addEventListener('keydown',e=>{if(e.key==='Tab'){keyboardMode=true;cancelEdgeHide();}});
+  root.addEventListener('pointerdown',e=>{keyboardMode=false;pointerX=e.clientX;pointerY=e.clientY;});
+  win.addEventListener('focusout',()=>setTimeout(()=>{if(!win.contains(document.activeElement))scheduleEdgeHide();},0));
+  function stopScroll(){if(scrollFrame)cancelAnimationFrame(scrollFrame);scrollFrame=0;scrollTarget=viewport.scrollTop;}
+  function applyGeometry(){
+    const available=Math.max(1,stage.clientWidth-16);
+    const minWidth=Math.min(300,available);
+    state.width=Math.max(minWidth,Math.min(state.width,available));
+    if(state.x===null)state.x=(stage.clientWidth-state.width)/2;
+    if(state.edgeSide==='left')state.x=8;
+    if(state.edgeSide==='right')state.x=stage.clientWidth-state.width-8;
+    state.x=Math.max(8,Math.min(state.x,stage.clientWidth-state.width-8));
+    state.y=Math.max(8,Math.min(state.y,stage.clientHeight-180));
+    state.height=Math.max(240,Math.min(state.height,stage.clientHeight-state.y-12));
+    win.style.width=state.width+'px';win.style.left=state.x+'px';win.style.top=state.y+'px';
+    win.style.maxHeight=state.height+'px';
+    updateEdge();
+    grip.hidden=state.minimized;
+  }
+  function beginGesture(e,kind){
+    if(e.button!==0)return;
+    if(kind==='move'&&e.target.closest('button,input,select,summary,a'))return;
+    cancelEdgeHide();revealEdge();
+    if(kind==='move'){state.edgeSide=null;state.edgeHidden=false;applyGeometry();}
+    stopScroll();closeMenu();
+    if(kind==='resize'){state.width=win.getBoundingClientRect().width;state.height=win.getBoundingClientRect().height;}
+    gesture={kind,id:e.pointerId,element:e.currentTarget,startX:e.clientX,startY:e.clientY,x:state.x,y:state.y,width:state.width,height:state.height};
+    e.currentTarget.setPointerCapture(e.pointerId);e.preventDefault();
+    root.classList.add('sq-manipulating');
+  }
+  function moveGesture(e){
+    if(!gesture||gesture.id!==e.pointerId)return;
+    const dx=e.clientX-gesture.startX,dy=e.clientY-gesture.startY;
+    if(gesture.kind==='move'){
+      state.x=gesture.x+dx;
+      const h=win.getBoundingClientRect().height;
+      state.y=Math.max(8,Math.min(gesture.y+dy,stage.clientHeight-h-8));
+    }else{
+      state.width=Math.min(gesture.width+dx,stage.clientWidth-gesture.x-8);
+      state.height=gesture.height+dy;
+    }
+    applyGeometry();
+  }
+  function endGesture(e){
+    if(!gesture||(e.pointerId!==undefined&&gesture.id!==e.pointerId))return;
+    const g=gesture;gesture=null;root.classList.remove('sq-manipulating');
+    if(g.element.hasPointerCapture(g.id))g.element.releasePointerCapture(g.id);
+    if(g.kind==='move'){
+      const leftDistance=state.x-8,rightDistance=stage.clientWidth-state.width-8-state.x;
+      if(Math.min(leftDistance,rightDistance)<=24)dockTo(leftDistance<=rightDistance?'left':'right');
+    }
+    scheduleEdgeHide();remember();
+  }
+  toolbar.addEventListener('pointerdown',e=>beginGesture(e,'move'));
+  grip.addEventListener('pointerdown',e=>beginGesture(e,'resize'));
+  [toolbar,grip].forEach(el=>{el.addEventListener('pointermove',moveGesture);el.addEventListener('pointerup',endGesture);el.addEventListener('pointercancel',endGesture);el.addEventListener('lostpointercapture',endGesture);});
+  window.addEventListener('blur',()=>{if(gesture)endGesture({pointerId:gesture.id});stopScroll();});
+  grip.addEventListener('keydown',e=>{
+    const amount=e.shiftKey?24:8;
+    if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;
+    e.preventDefault();e.stopPropagation();
+    state.width=win.getBoundingClientRect().width;state.height=win.getBoundingClientRect().height;
+    if(e.key==='ArrowLeft')state.width-=amount;if(e.key==='ArrowRight')state.width+=amount;
+    if(e.key==='ArrowUp')state.height-=amount;if(e.key==='ArrowDown')state.height+=amount;
+    state.width=Math.min(state.width,stage.clientWidth-state.x-8);applyGeometry();remember();
+  });
+  viewport.addEventListener('wheel',e=>{
+    if(e.ctrlKey||e.shiftKey||e.deltaX||e.target.closest('input,textarea,select')||reduceMotion())return;
+    if(e.deltaMode===0&&Math.abs(e.deltaY)<50){stopScroll();return;}
+    const maximum=Math.max(0,viewport.scrollHeight-viewport.clientHeight);
+    const delta=e.deltaY*(e.deltaMode===1?18:e.deltaMode===2?viewport.clientHeight:1);
+    if(!maximum||(viewport.scrollTop<=0&&delta<0)||(viewport.scrollTop>=maximum-1&&delta>0)){stopScroll();return;}
+    e.preventDefault();
+    if(!scrollFrame||Math.sign(delta)!==Math.sign(scrollTarget-viewport.scrollTop))scrollTarget=viewport.scrollTop;
+    scrollTarget=Math.max(0,Math.min(maximum,scrollTarget+delta));
+    if(scrollFrame)return;
+    scrollTime=performance.now();
+    function tick(now){
+      const elapsed=Math.min(now-scrollTime,50);scrollTime=now;
+      scrollTarget=Math.min(scrollTarget,Math.max(0,viewport.scrollHeight-viewport.clientHeight));
+      const gap=scrollTarget-viewport.scrollTop;
+      if(Math.abs(gap)<.7){viewport.scrollTop=scrollTarget;scrollFrame=0;return;}
+      const before=viewport.scrollTop;
+      viewport.scrollTop=before+gap*(1-Math.exp(-elapsed/60));
+      if(elapsed>5&&Math.abs(viewport.scrollTop-before)<.1){viewport.scrollTop=scrollTarget;scrollFrame=0;return;}
+      scrollFrame=requestAnimationFrame(tick);
+    }
+    scrollFrame=requestAnimationFrame(tick);
+  },{passive:false});
+  viewport.addEventListener('pointerdown',stopScroll,{passive:true});
+  viewport.addEventListener('touchstart',stopScroll,{passive:true});
+  viewport.addEventListener('keydown',stopScroll);
+  if(globalThis.ResizeObserver)new ResizeObserver(()=>applyGeometry()).observe(stage);
+  if(Number.isFinite(saved.width))state.width=saved.width;
+  if(Number.isFinite(saved.height))state.height=saved.height;
+  if(Number.isFinite(saved.x))state.x=saved.x;
+  if(Number.isFinite(saved.y))state.y=saved.y;
+  if(['left','right'].includes(saved.edgeSide))state.edgeSide=saved.edgeSide;
+  if(typeof saved.autoHide==='boolean')state.docked=saved.autoHide;
+
+  // Animated Text Disclosure: keep native summary activation and measure real contents.
+  const stepsPanel=q('.sq-steps'),stepsSummary=stepsPanel.querySelector('summary');
+  const stepsBody=q('#sq-step-content'),stepsInner=stepsBody.querySelector('.sq-step-list');
+  const stepsMotion={raf:0,x:0,velocity:0,time:0};
+  function settleSteps(){
+    if(stepsMotion.raf)cancelAnimationFrame(stepsMotion.raf);
+    stepsMotion.raf=0;stepsMotion.velocity=0;
+    stepsBody.style.height='';stepsBody.style.overflow='';
+    stepsBody.hidden=!state.stepsOpen;stepsBody.inert=!state.stepsOpen;
+    stepsBody.setAttribute('aria-hidden',String(!state.stepsOpen));
+    stepsPanel.open=state.stepsOpen;
+    stepsSummary.setAttribute('aria-expanded',String(state.stepsOpen));
+  }
+  function animateSteps(){
+    stopScroll();cancelEdgeHide();
+    if(!state.stepsOpen&&stepsBody.contains(document.activeElement))stepsSummary.focus({preventScroll:true});
+    stepsSummary.setAttribute('aria-expanded',String(state.stepsOpen));
+    stepsBody.inert=!state.stepsOpen;stepsBody.setAttribute('aria-hidden',String(!state.stepsOpen));
+    if(reduceMotion()){settleSteps();return;}
+    const wasClosed=stepsBody.hidden||!stepsPanel.open;
+    stepsMotion.x=wasClosed?0:stepsBody.getBoundingClientRect().height;
+    if(stepsMotion.raf)cancelAnimationFrame(stepsMotion.raf);
+    if(wasClosed)stepsMotion.velocity=0;
+    stepsPanel.open=true;stepsBody.hidden=false;
+    stepsBody.style.height=stepsMotion.x+'px';stepsBody.style.overflow='hidden';
+    stepsMotion.time=performance.now();
+    function frame(now){
+      if(reduceMotion()||!stepsInner.getClientRects().length){settleSteps();return;}
+      // Remeasure while moving, so resizing and font changes cannot leave a stale endpoint.
+      const destination=state.stepsOpen?stepsInner.getBoundingClientRect().height:0;
+      const dt=Math.min((now-stepsMotion.time)/1000,.04);stepsMotion.time=now;
+      const omega=10.5,offset=stepsMotion.x-destination;
+      const coefficient=stepsMotion.velocity+omega*offset,decay=Math.exp(-omega*dt);
+      stepsMotion.x=destination+(offset+coefficient*dt)*decay;
+      stepsMotion.velocity=(stepsMotion.velocity-omega*coefficient*dt)*decay;
+      if(stepsMotion.x<0){stepsMotion.x=0;stepsMotion.velocity=0;}
+      stepsBody.style.height=stepsMotion.x+'px';
+      if(Math.abs(stepsMotion.x-destination)<.4&&Math.abs(stepsMotion.velocity)<4){settleSteps();scheduleEdgeHide();return;}
+      stepsMotion.raf=requestAnimationFrame(frame);
+    }
+    stepsMotion.raf=requestAnimationFrame(frame);
+  }
+  stepsSummary.addEventListener('click',e=>{
+    e.preventDefault();state.stepsOpen=!state.stepsOpen;animateSteps();remember();
+  });
+  const stepsMedia=window.matchMedia('(prefers-reduced-motion: reduce)');
+  if(stepsMedia.addEventListener)stepsMedia.addEventListener('change',()=>{if(stepsMedia.matches)settleSteps();});
+  settleSteps();
+  render();scheduleEdgeHide();
+  if(globalThis.Tweak){const tweak=new Tweak({container:q('.sq-window'),onChange:render});tweak.addSelect(state,'skin',{label:'皮肤',options:[{label:'深蓝玻璃',value:'glass'},{label:'轻透悬浮',value:'transparent'},{label:'杂志手账',value:'journal'},{label:'夜航 HUD',value:'night'}]});tweak.addSlider(state,'density',{label:'留白',min:.8,max:1.3,step:.1});}
+})();
+</script>

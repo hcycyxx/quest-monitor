@@ -1,0 +1,13 @@
+{
+  "version": "SideQuest UI V10",
+  "checked_at": "2026-11-06T17:10:13.604032+08:00",
+  "temporary_data_checks": 10,
+  "isolated_renderer_checks": 14,
+  "renderer_errors": 0,
+  "windows_desktop_assemblies": "OK",
+  "webview2_available": true,
+  "formal_window_started": false,
+  "real_task_records_modified": false,
+  "extra_model_test_calls": 0,
+  "reference_sha256": "17a8121026d4de63e3f59253cc20119c05b22e2d8bd7e17ad2cd74e1c83e98e8"
+}

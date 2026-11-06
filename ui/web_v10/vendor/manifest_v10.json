@@ -1,0 +1,12 @@
+{
+  "lucide.min.js": {
+    "source": "https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js",
+    "sha256": "3411692820cb8d47543f69496aa25fd603a358f4498046f41c508a5a3342210e",
+    "bytes": 357796
+  },
+  "LUCIDE_LICENSE": {
+    "source": "https://unpkg.com/lucide@0.468.0/LICENSE",
+    "sha256": "1e7290b35280a048667bbf0ebabac1c7fd52a75300e8b2946ac165715997f2bc",
+    "bytes": 880
+  }
+}

@@ -1,0 +1,6 @@
+# Isolated desktop UI only; workers continue using the existing Python installation.
+pywebview==6.2.1
+pystray==0.19.5
+# Pinned Windows .NET Framework adapter, verified on this machine.
+pythonnet==3.0.5
+clr_loader==0.2.7.post0
