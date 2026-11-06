@@ -1,0 +1,104 @@
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#14171f}
+#sidequest-app-v10{height:100%;width:100%;color-scheme:dark}
+#sidequest-app-v10[data-skin=journal]{color-scheme:light}
+#sidequest-app-v10 .sq-stage{position:static;width:100%;height:100%;min-height:0;overflow:hidden}
+#sidequest-app-v10 .sq-window{position:relative;left:0;top:0;transform:none!important;width:100%;max-width:none;height:100%;max-height:none;transition:none}
+#sidequest-app-v10 .sq-viewport{flex:1;min-height:0}
+#sidequest-app-v10 .sq-menu{max-height:calc(100% - 60px);overflow:auto;z-index:20}
+#sidequest-app-v10 .sq-task-name{flex:1;text-align:left;padding:0;min-width:0;overflow-wrap:anywhere;font-weight:600}
+#sidequest-app-v10 .sq-task-heading .sq-check{width:22px;height:22px;min-width:22px;padding:3px;margin-right:6px}
+#sidequest-app-v10 .sq-task-heading{align-items:flex-start}
+#sidequest-app-v10 .sq-task-heading .sq-priority{white-space:nowrap}
+#sidequest-app-v10 .sq-task-details{padding-top:12px;font-size:12px;color:var(--sq-muted)}
+#sidequest-app-v10 .sq-task-details label{margin-top:10px;align-items:flex-start}
+#sidequest-app-v10 .sq-task-details .sq-note{white-space:pre-wrap;margin-bottom:10px}
+#sidequest-app-v10 .sq-history-row{padding:8px 0;align-items:flex-start}
+#sidequest-app-v10 .sq-history-row>div{min-width:0;flex:1;overflow-wrap:anywhere}
+#sidequest-app-v10 .sq-history-time{display:block;color:var(--sq-muted);font-size:11px;margin-top:4px}
+#sidequest-app-v10 .sq-history{max-height:none}
+#sidequest-app-v10 .sq-feedback[data-error=true]{color:var(--sq-fg)}
+#sidequest-app-v10 .sq-feedback[data-error=true] [data-message]{color:var(--sq-fg);border-bottom:1px solid var(--sq-gold)}
+#sidequest-app-v10 .sq-edge-tab{top:12px;left:0;right:auto;max-height:76px}
+#sidequest-app-v10[data-edge=left] .sq-edge-tab{right:0;left:auto}
+#sidequest-app-v10[data-edge=left] .sq-edge-tab svg{transform:rotate(180deg)}
+#sidequest-app-v10[data-hidden=true] .sq-window{visibility:hidden;pointer-events:none}
+#sidequest-app-v10 button{cursor:pointer}
+#sidequest-app-v10 .sq-toolbar{cursor:grab}
+#sidequest-app-v10 .sq-toolbar{flex-wrap:wrap}
+#sidequest-app-v10 .sq-resize-handle{cursor:nwse-resize}
+#sidequest-app-v10 .sq-toolbar:active{cursor:grabbing}
+#sidequest-app-v10 button:disabled{cursor:default;opacity:.5}
+#sidequest-app-v10 [data-title]{white-space:normal;overflow-wrap:anywhere;text-wrap:balance}
+#sidequest-app-v10 [data-progress]{white-space:pre-wrap}
+#sidequest-app-v10 input:disabled{opacity:.5}
+#sidequest-app-v10 .sq-empty{padding:16px 18px;color:var(--sq-muted);font-size:12px}
+#sidequest-app-v10 .sq-step-list label{align-items:flex-start}
+#sidequest-app-v10 .sq-step-list label span{overflow-wrap:anywhere}
+#sidequest-app-v10 .sq-progress-label{white-space:normal}
+
+/* Disabled means unavailable/saving, never a confirmed completion. */
+#sidequest-app-v10 .sq-check:disabled{color:var(--sq-muted);background:transparent;border-color:color-mix(in srgb,var(--sq-muted) 30%,var(--sq-bg));opacity:.4}
+
+/* Timeline follows the existing skin tokens and typography. */
+#sidequest-app-v10 .sq-timeline{padding:18px}
+#sidequest-app-v10 .sq-timeline-controls{display:flex;gap:12px;align-items:center;justify-content:space-between;margin:12px 0 16px}
+#sidequest-app-v10 .sq-timeline-controls label{font-size:12px;color:var(--sq-muted)}
+#sidequest-app-v10 .sq-timeline-controls input{min-width:0;max-width:155px;background:var(--sq-hi);color:var(--sq-fg);border:1px solid var(--sq-stroke);border-radius:5px;padding:6px;font:inherit}
+#sidequest-app-v10 .sq-timeline-summary{font-size:12px;color:var(--sq-fg);font-weight:600;line-height:1.7;margin-bottom:8px}
+#sidequest-app-v10 .sq-timeline-note{font-size:11px;color:var(--sq-muted);line-height:1.7;margin-bottom:22px}
+#sidequest-app-v10 .sq-timeline-row{display:grid;grid-template-columns:42px minmax(0,1fr);column-gap:14px;position:relative;padding-bottom:24px}
+#sidequest-app-v10 .sq-timeline-row:before{content:'';position:absolute;left:49px;top:7px;bottom:0;width:1px;background:var(--sq-stroke)}
+#sidequest-app-v10 .sq-timeline-row:after{content:'';position:absolute;left:46px;top:5px;width:7px;height:7px;border-radius:50%;background:var(--sq-gold)}
+#sidequest-app-v10 .sq-timeline-row:last-child:before{display:none}
+#sidequest-app-v10 .sq-timeline-time{font-size:11px;color:var(--sq-muted);font-variant-numeric:tabular-nums;padding-top:1px}
+#sidequest-app-v10 .sq-timeline-title{font-size:13px;font-weight:600;overflow-wrap:anywhere;line-height:1.6}
+#sidequest-app-v10 .sq-timeline-meta{font-size:11px;color:var(--sq-muted);line-height:1.7;margin-top:5px}
+#sidequest-app-v10 .sq-timeline-track{height:6px;border-radius:3px;background:color-mix(in srgb,var(--sq-muted) 13%,var(--sq-bg));overflow:hidden;margin-top:10px}
+#sidequest-app-v10 .sq-timeline-fill{display:block;height:100%;border-radius:3px;background:var(--sq-gold)}
+#sidequest-app-v10 .sq-timeline-duration{font-size:11px;color:var(--sq-muted);margin-top:5px;text-align:right;font-variant-numeric:tabular-nums}
+#sidequest-app-v10 .sq-timeline-event{font-size:11px;color:var(--sq-muted);margin-top:5px}
+#sidequest-app-v10 .sq-timeline-row[data-kind=completed]:after{background:var(--sq-green)}
+#sidequest-app-v10 .sq-timeline-row[data-kind=completed] .sq-timeline-event{color:var(--sq-green)}
+
+/* V10.6: priority colors share a semantic token across title, label and progress. */
+#sidequest-app-v10 [data-level=high]{--sq-task-tone:var(--sq-prio-high)}
+#sidequest-app-v10 [data-level=mid]{--sq-task-tone:var(--sq-prio-mid)}
+#sidequest-app-v10 [data-level=low]{--sq-task-tone:var(--sq-prio-low)}
+#sidequest-app-v10 [data-level=wait]{--sq-task-tone:var(--sq-prio-wait)}
+#sidequest-app-v10 [data-level=done]{--sq-task-tone:var(--sq-prio-done)}
+#sidequest-app-v10 [data-level=unknown]{--sq-task-tone:var(--sq-muted)}
+#sidequest-app-v10 .sq-focus[data-level] .sq-primary-copy h2,#sidequest-app-v10 .sq-task[data-level] .sq-task-name,#sidequest-app-v10 .sq-task[data-level] .sq-priority,#sidequest-app-v10 .sq-task[data-level] .sq-waiting,#sidequest-app-v10 .sq-task[data-level] .sq-progress-label,#sidequest-app-v10 .sq-focus[data-level] .sq-progress-label{color:var(--sq-task-tone)}
+#sidequest-app-v10 .sq-focus[data-level=unknown] .sq-primary-copy h2,#sidequest-app-v10 .sq-task[data-level=unknown] .sq-task-name{color:var(--sq-fg)}
+#sidequest-app-v10 .sq-task[data-level] .sq-progress-fill,#sidequest-app-v10 .sq-task[data-level] .sq-progress-range,#sidequest-app-v10 .sq-focus[data-level] .sq-progress-fill,#sidequest-app-v10 .sq-focus[data-level] .sq-progress-range{background:var(--sq-task-tone)}
+#sidequest-app-v10 .sq-task[data-level] .sq-progress-waiting .sq-progress-fill,#sidequest-app-v10 .sq-task[data-level] .sq-progress-waiting .sq-progress-range{background:var(--sq-task-tone)}
+#sidequest-app-v10 .sq-focus[data-level] .sq-ring-fill{stroke:var(--sq-task-tone)}
+#sidequest-app-v10 .sq-task-heading .sq-priority{flex-shrink:0}
+
+/* Completion feedback stays local to the pointer, never intercepts input. */
+.sq-complete-effects{position:fixed;width:0;height:0;pointer-events:none;z-index:1000;--sq-fx-blue:#8ab7ee}
+.sq-complete-ring{position:absolute;left:0;top:0;width:72px;height:72px;border:2px solid var(--sq-fx-blue);border-radius:50%;opacity:0;pointer-events:none}
+.sq-complete-spark{position:absolute;width:7px;height:2px;background:#a8ccf1;border-radius:2px;opacity:0;pointer-events:none}
+#sidequest-app-v10 .sq-completion-ack .sq-check{color:#9ec6f0;background:color-mix(in srgb,#8ab7ee 15%,var(--sq-bg));border-color:#8ab7ee;opacity:1}
+#sidequest-app-v10 .sq-completed-leaving{pointer-events:none;min-height:0}
+#sidequest-app-v10 .sq-action-error{font-size:12px;line-height:1.6;color:var(--sq-fg);padding:10px 0;text-decoration:underline;text-decoration-color:var(--sq-gold);overflow-wrap:anywhere}
+#sidequest-app-v10 .sq-task[data-level] .sq-task-name,#sidequest-app-v10 .sq-focus[data-level] .sq-primary-copy h2{color:color-mix(in srgb,var(--sq-task-tone) 72%,var(--sq-fg))}
+@media(prefers-reduced-motion:reduce){.sq-complete-effects{display:none}}
+
+/* Unified rounded task cards and bounded, brighter completion sparks. */
+.sq-complete-spark{width:9px;height:3px;box-shadow:0 1px 5px rgba(153,207,255,.45)}
+#sidequest-app-v10 .sq-list-inner{display:flow-root}
+#sidequest-app-v10 .sq-task{position:relative;margin:10px 14px;padding:14px;border:1px solid color-mix(in srgb,var(--sq-muted) 15%,var(--sq-bg));border-radius:12px;background:color-mix(in srgb,var(--sq-hi) 34%,var(--sq-bg));transition:background-color 160ms ease-out,border-color 160ms ease-out}
+#sidequest-app-v10 .sq-task:hover{background:color-mix(in srgb,var(--sq-hi) 60%,var(--sq-bg));border-color:color-mix(in srgb,var(--sq-muted) 27%,var(--sq-bg))}
+#sidequest-app-v10 .sq-task-heading{padding-right:23px}
+#sidequest-app-v10 .sq-task-name{border-radius:7px;user-select:none;padding:2px 4px;margin:-2px -4px}
+#sidequest-app-v10 .sq-title-toggle{border-radius:8px;user-select:none}
+#sidequest-app-v10 .sq-next{border-radius:12px}
+#sidequest-app-v10 .sq-next:hover{background:color-mix(in srgb,var(--sq-hi) 88%,var(--sq-bg))}
+#sidequest-app-v10 .sq-card-grip{position:absolute;right:7px;top:10px;width:24px;height:28px;display:grid;place-items:center;padding:4px;border-radius:7px;color:var(--sq-muted);cursor:grab;touch-action:none;user-select:none}
+#sidequest-app-v10 .sq-card-grip svg{width:14px;height:14px;opacity:.75}
+#sidequest-app-v10 .sq-card-grip:active{cursor:grabbing;transform:none}
+#sidequest-app-v10 .sq-card-placeholder{box-sizing:border-box;margin:10px 14px;border:1px dashed color-mix(in srgb,var(--sq-cyan) 50%,var(--sq-bg));border-radius:12px;background:color-mix(in srgb,var(--sq-cyan) 5%,var(--sq-bg))}
+#sidequest-app-v10 .sq-task.sq-card-dragging{background:var(--sq-hi);border-color:transparent;box-shadow:0 10px 28px rgba(0,0,0,.3);transition:none;pointer-events:none}
+#sidequest-app-v10 .sq-card-dragging .sq-card-grip{pointer-events:auto;cursor:grabbing}
+@media(pointer:coarse){#sidequest-app-v10 .sq-card-grip{width:32px;height:40px;top:5px;right:5px}#sidequest-app-v10 .sq-task-heading{padding-right:32px}}
+@media(prefers-reduced-motion:reduce){#sidequest-app-v10 .sq-task{transition:none}}
