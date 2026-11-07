@@ -1,0 +1,19 @@
+{
+  "version": "SideQuest V11 portable",
+  "folder": "C:\\Users\\Blank\\Desktop\\SideQuest便携版_V11_20261107",
+  "exe": "C:\\Users\\Blank\\Desktop\\SideQuest便携版_V11_20261107\\SideQuest.exe",
+  "exe_sha256": "2415d6d4236bb270358b31df264971b143d448e72e6f7b895f58bdac9544eea0",
+  "exe_bytes": 11245305,
+  "python_required": false,
+  "platform": "Windows 10/11 x64",
+  "api_host": "127.0.0.1",
+  "credentials_included": false,
+  "customer_data_included": false,
+  "executed_for_testing": false,
+  "cross_machine_tested": false,
+  "build_tool": "PyInstaller 6.20.0",
+  "zip": "C:\\Users\\Blank\\Desktop\\SideQuest便携版_V11_20261107.zip",
+  "zip_bytes": 470754470,
+  "zip_sha256": "c50986b215d4e5dc99f82d2ee1d8583f32be51db1db1bf0893c2b7902c28cc7f",
+  "folder_bytes": 645604800
+}
