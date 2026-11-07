@@ -27,7 +27,7 @@
     const reasons=[...holds].sort(),signature=reasons.join('|');
     if(bridge&&signature!==lastHold){lastHold=signature;holdPending={active:reasons.length>0,reasons};sendHold();}
   }
-  let uncertainOperation=null,savingNode=null;
+  let uncertainOperation=null,savingNode=null,controlNotice=false;
   const reconcileButton=el('button','sq-text-button','核对保存结果');reconcileButton.type='button';reconcileButton.hidden=true;q('.sq-feedback').append(reconcileButton);
   function resultOrError(result){if(!result||!result.ok)throw Error(result?.error||'操作未完成，请核对');return result;}
   function deadline(promise,ms){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{const error=Error('操作等待超时，请核对状态；没有自动重发');error.code='TIMEOUT';reject(error);},ms);Promise.resolve(promise).then(value=>{clearTimeout(timer);resolve(value);},error=>{clearTimeout(timer);reject(error);});});}

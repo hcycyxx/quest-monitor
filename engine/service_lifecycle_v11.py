@@ -31,7 +31,8 @@ class Lifecycle:
                 value=json.loads(telemetry.read_text(encoding='utf-8'))
                 success=value.get('lastSuccess')
                 return {'lastSuccess':datetime.fromtimestamp(success,TZ).isoformat() if isinstance(success,(int,float)) else None,
-                        'lastEngineError':str(value.get('lastEngineError') or '')[:160],'successSource':'engine-telemetry'}
+                        'lastEngineError':str(value.get('lastEngineError') or '')[:160],'successSource':'engine-telemetry',
+                        'enginePhase':value.get('phase'),'lastAttempt':value.get('lastAttempt'),'lastFailure':value.get('lastFailure')}
             except (OSError,ValueError,TypeError):pass
         if not path.exists():return {}
         with path.open('rb') as stream:

@@ -157,14 +157,15 @@
     renderMain(snapshot.current);renderOthers();renderHistory();
     text('[data-next]',snapshot.suggestion);text('.sq-observation p',snapshot.activity);
     const date=snapshot.updated_at?new Date(snapshot.updated_at):null;
-    text('[data-updated]',date&&!Number.isNaN(date.getTime())?'更新于 '+date.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'更新时间未知');
+    text('[data-updated]',date&&!Number.isNaN(date.getTime())?'更新于 '+date.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):state.health.lastSuccess?'识别于 '+new Date(state.health.lastSuccess).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'等待首次识别');
+    if(controlNotice&&!state.serviceBusy){controlNotice=false;if(state.health.error)feedback('后台切换失败：'+state.health.error,true);else if(state.paused)feedback('已暂停后台');else if(state.health.running)feedback('已启动后台，正在等待识别结果');else feedback('后台未就绪，请查看后台状态',true);}
     if(snapshot.error){feedback(snapshot.error,true);feedbackKind='read';}else if(feedbackKind==='read'){q('.sq-feedback').hidden=true;feedbackKind='';}
     if(snapshot.summaryError&&snapshot.summaryError!==lastSummaryError)feedback('日报生成失败：'+snapshot.summaryError,true);
     lastSummaryError=snapshot.summaryError;
     renderChrome();syncTaskList(true);settleInitialSteps();requestFit();
   }
   function renderChrome(){
-    text('[data-status]',state.serviceBusy?'切换中':!state.health.checkedAt?'核验中':state.health.stale?'待核验':state.health.error?'后台异常':state.paused?'已暂停':!state.health.running?'后台未运行':state.resting?'自动休息':'观察中');q('.sq-dot').style.background=state.paused||!state.health.running?'var(--sq-gold)':'var(--sq-green)';updateHealthView();
+    text('[data-status]',state.serviceBusy?'切换中':!state.health.checkedAt?'核验中':state.health.stale?'待核验':state.health.error?'后台异常':state.paused?'已暂停':state.health.lastEngineError?'识别异常':state.health.enginePhase==='starting'?'后台准备中':state.health.enginePhase==='analyzing'?'识别中':!state.health.running?'后台未运行':state.resting?'自动休息':'观察中');q('.sq-dot').style.background=state.paused||!state.health.running?'var(--sq-gold)':'var(--sq-green)';updateHealthView();
     const pause=q('[data-action=pause]');pause.setAttribute('aria-pressed',String(state.paused));pause.setAttribute('aria-label',state.paused?'继续观察':'暂停观察');pause.dataset.tooltip=state.paused?'继续观察':'暂停观察';buttonIcon(pause,state.paused||!state.health.running?'play':'pause');pause.disabled=state.serviceBusy;pause.dataset.tooltip=state.serviceBusy?'后台切换中':!state.health.running?'启动后台':state.paused?'继续观察':'暂停观察';pause.setAttribute('aria-label',pause.dataset.tooltip);
     q('[data-action=pin]').setAttribute('aria-pressed',String(state.prefs.pinned!==false));
     q('[data-action=dock]').setAttribute('aria-pressed',String(state.prefs.autoHide!==false));text('[data-dock-label]',state.prefs.autoHide!==false?'贴边自动隐藏：开启':'贴边自动隐藏：关闭');
@@ -177,9 +178,10 @@
   window.sidequestDesktop=applyDesktop;
   function menu(open){q('#sq-menu').hidden=!open;q('#sq-menu').style.top=(toolbar.offsetHeight+4)+'px';q('[data-action=menu]').setAttribute('aria-expanded',String(open));setHold('menu',open);requestFit();}
   const healthView=el('details','sq-health'),healthHeading=el('summary','','后台状态'),healthText=el('p','');healthView.append(healthHeading,healthText);q('.sq-settings').insertBefore(healthView,q('.sq-settings .sq-return'));
+  const engineNotice=el('p','sq-engine-notice');engineNotice.hidden=true;q('.sq-main-view').insertBefore(engineNotice,q('.sq-feedback'));
   function updateHealthView(){
     const h=state.health||{},status=role=>h.workers?.[role]?.length?'运行中':'未运行或待核验';
     const success=h.lastSuccess?new Date(h.lastSuccess).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}):'暂无成功识别记录';
     const lines=['窗口监测：'+status('win_watch'),'任务识别：'+status('llm_engine'),'最近成功识别：'+success+(h.successSource==='engine-log'?'（日志记录）':''),h.busy?'正在'+(h.operation||'切换后台'):'',h.error?'状态核验：'+h.error:'',h.lastEngineError?'识别提示：'+h.lastEngineError:''].filter(Boolean).join('\n');
-    if(healthText.textContent!==lines)healthText.textContent=lines;
+    if(healthText.textContent!==lines)healthText.textContent=lines;engineNotice.hidden=state.paused||!h.lastEngineError;if(!engineNotice.hidden)engineNotice.textContent=h.lastEngineError;
   }

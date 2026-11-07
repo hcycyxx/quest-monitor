@@ -1,5 +1,5 @@
 {
-  "version": "V11.1",
+  "version": "V11.2",
   "app": "app_v11",
   "scripts": [
     "00-runtime.js",
