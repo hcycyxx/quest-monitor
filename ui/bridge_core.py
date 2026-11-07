@@ -137,6 +137,7 @@ class Bridge:
                 if type(value) not in (int,float) or not math.isfinite(value):self._prefs.pop(key,None)
                 else:self._prefs[key]=number(value,0,-100000,100000)
         self._old_ui_stamp=self._file_stamp(self._data/'ui.json')
+        self._old_ui_font=read_json(self._data/'ui.json',{}).get('font_size')
         self._base_python = str(Path(sys.base_prefix) / "python.exe")
         self._lifecycle=Lifecycle()
         if self._controller:self._controller._lifecycle=self._lifecycle
@@ -163,8 +164,9 @@ class Bridge:
         if stamp != self._old_ui_stamp:
             self._old_ui_stamp = stamp
             value = read_json(path, {}).get("font_size")
-            if type(value) is int:
-                self.preferences({"font": round(value * 4 / 3)})
+            if value!=self._old_ui_font:
+                self._old_ui_font=value
+                if type(value) is int:self.preferences({"font": round(value * 4 / 3)})
 
     def _save_preferences(self, patch):
         with self._lock:

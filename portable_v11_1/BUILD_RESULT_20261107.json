@@ -1,0 +1,14 @@
+{
+  "version": "SideQuest V11.1 portable",
+  "folder": "C:\\Users\\Blank\\Desktop\\SideQuest便携版_V11_1_20261107",
+  "exe": "C:\\Users\\Blank\\Desktop\\SideQuest便携版_V11_1_20261107\\SideQuest.exe",
+  "exe_sha256": "d5b288598c89e4920eb9215c6f591adf099d606168b14248d57d7925e8359bba",
+  "exe_bytes": 11274451,
+  "credentials_included": false,
+  "customer_data_included": false,
+  "runtime_execution_tested": false,
+  "interface_requests_executed": false,
+  "zip": "C:\\Users\\Blank\\Desktop\\SideQuest便携版_V11_1_20261107.zip",
+  "zip_bytes": 470790096,
+  "zip_sha256": "7b76555104ac2cd1a3d27be147ffbb265adfabe09c6c03c78cd7bb66dcd094b6"
+}

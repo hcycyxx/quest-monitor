@@ -1,0 +1,9 @@
+{
+  "version": "V11.1-portable",
+  "build_id": "v11_1_20261107_3bcbc7e13aa94602",
+  "platform": "Windows 10/11 x64",
+  "api_host": "127.0.0.1",
+  "credentials_included": false,
+  "customer_data_included": false,
+  "runtime_execution_tested": false
+}
